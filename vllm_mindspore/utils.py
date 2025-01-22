@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+# encoding: utf-8
+# Copyright 2025 Huawei Technologies Co., Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+
+import contextlib
+import gc
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+import torch
+
+if TYPE_CHECKING:
+    from torch.library import Library
+else:
+    Library = None
+
+import mindspore as ms
+
+MsKVCache = Tuple[ms.Tensor, ms.Tensor]
+
+
+def direct_register_custom_op(
+    op_name: str,
+    op_func: Callable,
+    mutates_args: List[str],
+    fake_impl: Optional[Callable] = None,
+    target_lib: Optional[Library] = None,
+    dispatch_key: str = "CUDA",
+): ...
+
+
+@contextlib.contextmanager
+def memory_profiling(
+    baseline_memory_in_bytes: int, weights_memory_in_bytes: int
+) -> Generator["MemoryProfilingResult", None, None]:
+    """Memory profiling context manager.
+    baseline_memory_in_bytes: memory used by all the components other than
+        the current vLLM instance. It contains: memory used by other processes, memory
+        used by another vLLM instance in the same process, etc. It is usually measured
+        before the current vLLM instance initialize the device. And we assume it is
+        constant during the profiling of the current vLLM instance.
+    weights_memory_in_bytes: memory used by PyTorch when loading the model weights.
+        Note that, before loading the model weights, we also initialize the device
+        and distributed environment, which may consume some memory. This part is not
+        included in the weights_memory_in_bytes because PyTorch does not control it.
+
+    The memory in one GPU can be classified into 3 categories:
+    1. memory used by anything other than the current vLLM instance.
+    2. memory used by torch in the current vLLM instance.
+    3. memory used in the current vLLM instance, but not by torch.
+
+    A quantitive example:
+
+    Before creating the current vLLM instance:
+        category 1: 1 GiB
+        category 2: 0 GiB
+        category 3: 0 GiB
+
+    After creating the current vLLM instance and loading the model,
+    (i.e. before profiling):
+        category 1: 1 GiB
+        category 2: 2 GiB (model weights take 2 GiB)
+        category 3: 0.5 GiB (memory used by NCCL)
+
+    During profiling (peak):
+        category 1: 1 GiB
+        category 2: 4 GiB (peak activation tensors take 2 GiB)
+        category 3: 1 GiB (memory used by NCCL + buffers for some attention backends)
+
+    After profiling:
+        category 1: 1 GiB
+        category 2: 3 GiB (after garbage-collecting activation tensors)
+        category 3: 1 GiB (memory used by NCCL + buffers for some attention backends)
+
+    In this case, non-kv cache takes 5 GiB in total, including:
+    a. 2 GiB used by the model weights (category 2)
+    b. 2 GiB reserved for the peak activation tensors (category 2)
+    c. 1 GiB used by non-torch components (category 3)
+
+    The memory used for loading weights (a.) is directly given from the argument `weights_memory_in_bytes`.
+
+    The increase of ``torch.cuda.memory_stats()["allocated_bytes.all.peak"]` after profiling gives (b.).
+
+    (c.) is tricky. We measure the total memory used in this GPU (`torch.cuda.mem_get_info()[1] - torch.cuda.mem_get_info()[0]`),
+    subtract the baseline memory, the memory used by the model weights, and diff of `torch.cuda.memory_stats()["allocated_bytes.all.current"]`.
+    """  # noqa
+    torch.cuda.reset_peak_memory_stats()
+
+    from vllm.utils import MemoryProfilingResult
+
+    result = MemoryProfilingResult()
+
+    result.baseline_memory_in_bytes = baseline_memory_in_bytes
+    # the part of memory used for holding the model weights
+    result.weights_memory_in_bytes = weights_memory_in_bytes
+
+    yield result
+
+    gc.collect()
+    torch.cuda.empty_cache()
+
+
+from vllm.utils import T, TORCH_DTYPE_TO_NUMPY_DTYPE, make_ndarray_with_pad
+
+import mindspore as ms
+from mindspore.common.initializer import Zero
+
+
+def _create_empty_tensor(ms_type):
+    init_func = Zero()
+    init_func.__enable_zero_dim__ = True
+    init_tensor = ms.Tensor(shape=(0,), dtype=ms_type, init=init_func)
+    init_tensor.init_data()
+
+    return init_tensor
+
+
+def make_tensor_with_pad(
+    x: List[List[T]],
+    pad: T,
+    dtype: torch.dtype,
+    *,
+    max_len: Optional[int] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    pin_memory: bool = False,
+) -> torch.Tensor:
+    """
+    Make a padded tensor from 2D inputs.
+
+    The padding is applied to the end of each inner list until it reaches
+    `max_len`.
+    """
+    np_dtype = TORCH_DTYPE_TO_NUMPY_DTYPE[dtype]
+    padded_x = make_ndarray_with_pad(x, pad, np_dtype, max_len=max_len)
+
+    if padded_x.size == 0:
+        tensor = _create_empty_tensor(dtype)
+    else:
+        tensor = torch.from_numpy(padded_x)
+    if pin_memory:
+        tensor = tensor.pin_memory()
+
+    return tensor
+
+
+def async_tensor_h2d(
+    data: list,
+    dtype: torch.dtype,
+    target_device: Union[str, torch.device],
+    pin_memory: bool,
+) -> torch.Tensor:
+    """Asynchronously create a tensor and copy it from host to device."""
+    if not data:
+        t = _create_empty_tensor(dtype)
+    else:
+        t = torch.tensor(data, dtype=dtype, pin_memory=pin_memory, device="CPU")
+    return t
+
+
+def get_dtype_size(dtype: torch.dtype) -> int:
+    """Get the size of the data type in bytes."""
+    return torch.tensor([1], dtype=dtype).itemsize

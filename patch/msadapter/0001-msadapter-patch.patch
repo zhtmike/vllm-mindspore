@@ -1,0 +1,274 @@
+From a0fac1ce1b689f4818a65318818c7d1f884b83fd Mon Sep 17 00:00:00 2001
+From: tronzhang <zhangzhaochuang@huawei.com>
+Date: Thu, 23 Jan 2025 09:37:44 +0800
+Subject: [PATCH] msadapter patch
+
+---
+ mindtorch/torch/_C/_distributed_c10d.py   |  1 +
+ mindtorch/torch/__init__.py               |  7 ++++++-
+ mindtorch/torch/_dynamo/__init__.py       |  0
+ mindtorch/torch/_dynamo/config.py         |  2 ++
+ mindtorch/torch/_inductor/__init__.py     |  0
+ mindtorch/torch/_inductor/config.py       |  1 +
+ mindtorch/torch/cuda/__init__.py          |  2 ++
+ mindtorch/torch/cuda/memory.py            |  7 +++++++
+ mindtorch/torch/distributed/__init__.py   |  2 +-
+ mindtorch/torch/distributed/c10d/store.py | 21 ++++++++++++++++++++
+ mindtorch/torch/func.py                   | 16 +++++++++++++++
+ mindtorch/torch/fx.py                     |  1 +
+ mindtorch/torch/library.py                |  5 +++++
+ mindtorch/torch/nn/__init__.py            |  2 +-
+ mindtorch/torch/nn/parameter.py           |  4 ++++
+ mindtorch/torch/ops/__init__.py           | 24 +++++++++++++++++++++--
+ mindtorch/torch/types.py                  |  4 ++++
+ 17 files changed, 94 insertions(+), 5 deletions(-)
+ create mode 100644 mindtorch/torch/_C/_distributed_c10d.py
+ create mode 100644 mindtorch/torch/_dynamo/__init__.py
+ create mode 100644 mindtorch/torch/_dynamo/config.py
+ create mode 100644 mindtorch/torch/_inductor/__init__.py
+ create mode 100644 mindtorch/torch/_inductor/config.py
+ create mode 100644 mindtorch/torch/cuda/memory.py
+ create mode 100644 mindtorch/torch/func.py
+ create mode 100644 mindtorch/torch/fx.py
+ create mode 100644 mindtorch/torch/library.py
+
+diff --git a/mindtorch/torch/_C/_distributed_c10d.py b/mindtorch/torch/_C/_distributed_c10d.py
+new file mode 100644
+index 0000000..fa0b828
+--- /dev/null
++++ b/mindtorch/torch/_C/_distributed_c10d.py
+@@ -0,0 +1 @@
++from torch.distributed import Store, TCPStore
+diff --git a/mindtorch/torch/__init__.py b/mindtorch/torch/__init__.py
+index 39f90a9..f2177d5 100644
+--- a/mindtorch/torch/__init__.py
++++ b/mindtorch/torch/__init__.py
+@@ -57,7 +57,11 @@ nan = float("nan")
+ 
+ class device:
+     def __init__(self, name):
+-        pass
++        self.type = name
++
++    def __enter__(self): ...
++
++    def __exit__(self, type, value, traceback): ...
+ 
+ from ._C.size import Size
+ 
+@@ -71,6 +75,7 @@ from . import optim, ops, nn, distributions, cuda, distributed#, multiprocessing
+ from .autograd import no_grad, enable_grad, value_and_grad, inference_mode
+ from ._bind import get_default_dtype, set_default_dtype
+ from . import profiler
++from . import _dynamo, _inductor
+ 
+ BoolTensor = Tensor
+ FloatTensor = Tensor
+diff --git a/mindtorch/torch/_dynamo/__init__.py b/mindtorch/torch/_dynamo/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/mindtorch/torch/_dynamo/config.py b/mindtorch/torch/_dynamo/config.py
+new file mode 100644
+index 0000000..0d4f5b7
+--- /dev/null
++++ b/mindtorch/torch/_dynamo/config.py
+@@ -0,0 +1,2 @@
++cache_size_limit = 8
++accumulated_cache_size_limit = 256
+diff --git a/mindtorch/torch/_inductor/__init__.py b/mindtorch/torch/_inductor/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/mindtorch/torch/_inductor/config.py b/mindtorch/torch/_inductor/config.py
+new file mode 100644
+index 0000000..afdab53
+--- /dev/null
++++ b/mindtorch/torch/_inductor/config.py
+@@ -0,0 +1 @@
++compile_threads = 1
+diff --git a/mindtorch/torch/cuda/__init__.py b/mindtorch/torch/cuda/__init__.py
+index 661ed57..4b932c6 100644
+--- a/mindtorch/torch/cuda/__init__.py
++++ b/mindtorch/torch/cuda/__init__.py
+@@ -39,3 +39,5 @@ class device:
+ 
+     def __exit__(self, type: Any, value: Any, traceback: Any):
+         return False
++
++from .memory import *
+\ No newline at end of file
+diff --git a/mindtorch/torch/cuda/memory.py b/mindtorch/torch/cuda/memory.py
+new file mode 100644
+index 0000000..8ac0109
+--- /dev/null
++++ b/mindtorch/torch/cuda/memory.py
+@@ -0,0 +1,7 @@
++from typing import Union, Tuple
++
++from torch.types import Device
++
++
++def mem_get_info(device: Union[Device, int] = None) -> Tuple[int, int]:
++    return (25000, 29000)
+diff --git a/mindtorch/torch/distributed/__init__.py b/mindtorch/torch/distributed/__init__.py
+index 7a743fa..5e2d8d6 100644
+--- a/mindtorch/torch/distributed/__init__.py
++++ b/mindtorch/torch/distributed/__init__.py
+@@ -55,7 +55,7 @@ if is_available():
+         # set_debug_level,
+         # set_debug_level_from_env,
+         Store,
+-        # TCPStore,
++        TCPStore,
+         Work as _Work,
+     )
+ 
+diff --git a/mindtorch/torch/distributed/c10d/store.py b/mindtorch/torch/distributed/c10d/store.py
+index 7f5a20a..33f081d 100644
+--- a/mindtorch/torch/distributed/c10d/store.py
++++ b/mindtorch/torch/distributed/c10d/store.py
+@@ -1,6 +1,7 @@
+ import time
+ from typing import List, Optional, Callable
+ from abc import ABC, abstractmethod
++from datetime import timedelta
+ 
+ class Store:
+     kDefaultTimeout = 300  # in seconds
+@@ -98,3 +99,23 @@ class StoreTimeoutGuard:
+ 
+     def __move__(self):
+         raise NotImplementedError("Moving not allowed")
++
++class TCPStore(Store):
++    def __init__(
++        self,
++        host_name: str,
++        port: int,
++        world_size: int = ...,
++        is_master: bool = ...,
++        timeout: timedelta = ...,
++        wait_for_workers: bool = ...,
++        multi_tenant: bool = ...,
++        master_listen_fd: int = ...,
++        use_libuv: bool = ...,
++    ) -> None: ...
++
++    @property
++    def host(self) -> str: ...
++
++    @property
++    def port(self) -> int: ...
+diff --git a/mindtorch/torch/func.py b/mindtorch/torch/func.py
+new file mode 100644
+index 0000000..fec0fa0
+--- /dev/null
++++ b/mindtorch/torch/func.py
+@@ -0,0 +1,16 @@
++from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
++import torch
++import torch.nn as nn
++from torch import Tensor
++
++
++def functional_call(
++    module: "torch.nn.Module",
++    parameter_and_buffer_dicts: Union[Dict[str, Tensor], Sequence[Dict[str, Tensor]]],
++    args: Union[Any, Tuple],
++    kwargs: Optional[Dict[str, Any]] = None,
++    *,
++    tie_weights: bool = True,
++    strict: bool = False
++):
++    return module(*args, **kwargs)
+diff --git a/mindtorch/torch/fx.py b/mindtorch/torch/fx.py
+new file mode 100644
+index 0000000..a635c1a
+--- /dev/null
++++ b/mindtorch/torch/fx.py
+@@ -0,0 +1 @@
++class Graph: ...
+diff --git a/mindtorch/torch/library.py b/mindtorch/torch/library.py
+new file mode 100644
+index 0000000..a96a206
+--- /dev/null
++++ b/mindtorch/torch/library.py
+@@ -0,0 +1,5 @@
++class Library:
++    def __init__(self, a, b): ...
++
++
++def register_fake(): ...
+diff --git a/mindtorch/torch/nn/__init__.py b/mindtorch/torch/nn/__init__.py
+index c3eecf6..ca23279 100644
+--- a/mindtorch/torch/nn/__init__.py
++++ b/mindtorch/torch/nn/__init__.py
+@@ -15,4 +15,4 @@
+ """mindnlp nn"""
+ from . import utils, functional, init
+ from .modules import *
+-from .parameter import Parameter
++from .parameter import Parameter, UninitializedParameter
+diff --git a/mindtorch/torch/nn/parameter.py b/mindtorch/torch/nn/parameter.py
+index f4ade97..5dbe421 100644
+--- a/mindtorch/torch/nn/parameter.py
++++ b/mindtorch/torch/nn/parameter.py
+@@ -69,3 +69,7 @@ class Parameter(Tensor):
+             if hasattr(self, 'handle'):
+                 self.handle.remove()
+                 self.handle = None
++
++class UninitializedParameter(Parameter):
++    def __init__(self, input_data=None, requires_grad=True):
++        super().__init__(input_data, requires_grad)
+diff --git a/mindtorch/torch/ops/__init__.py b/mindtorch/torch/ops/__init__.py
+index c07a22d..8bc495d 100644
+--- a/mindtorch/torch/ops/__init__.py
++++ b/mindtorch/torch/ops/__init__.py
+@@ -1,6 +1,20 @@
+ """core ops like torch funcional api"""
+-from . import optim, array, blas, comparison, pointwise, creation, random, reduction, other, \
+-    tensor, fft_op, spectral, _inner
++
++from . import (
++    optim,
++    array,
++    blas,
++    comparison,
++    pointwise,
++    creation,
++    random,
++    reduction,
++    other,
++    tensor,
++    fft_op,
++    spectral,
++    _inner,
++)
+ from .array import *
+ from .blas import *
+ from .comparison import *
+@@ -14,6 +28,12 @@ from .fft_op import *
+ from .spectral import *
+ from ._inner import *
+ 
++
++class _C:
++    def __init__(self):
++        pass
++
++
+ __all__ = []
+ __all__.extend(_inner.__all__)
+ __all__.extend(array.__all__)
+diff --git a/mindtorch/torch/types.py b/mindtorch/torch/types.py
+index e69de29..9616328 100644
+--- a/mindtorch/torch/types.py
++++ b/mindtorch/torch/types.py
+@@ -0,0 +1,4 @@
++from typing import Union
++from typing_extensions import TypeAlias
++
++Device: TypeAlias = Union[str, int, None]
+-- 
+2.43.0
+

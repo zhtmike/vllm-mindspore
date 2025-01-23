@@ -1,27 +1,28 @@
-From a0fac1ce1b689f4818a65318818c7d1f884b83fd Mon Sep 17 00:00:00 2001
+From b790cb5543bb4b5b05f0dfba1884e4b4cf4acd47 Mon Sep 17 00:00:00 2001
 From: tronzhang <zhangzhaochuang@huawei.com>
-Date: Thu, 23 Jan 2025 09:37:44 +0800
-Subject: [PATCH] msadapter patch
+Date: Thu, 23 Jan 2025 19:46:48 +0800
+Subject: [PATCH] modify for vllm_mindspore
 
 ---
- mindtorch/torch/_C/_distributed_c10d.py   |  1 +
- mindtorch/torch/__init__.py               |  7 ++++++-
- mindtorch/torch/_dynamo/__init__.py       |  0
- mindtorch/torch/_dynamo/config.py         |  2 ++
- mindtorch/torch/_inductor/__init__.py     |  0
- mindtorch/torch/_inductor/config.py       |  1 +
- mindtorch/torch/cuda/__init__.py          |  2 ++
- mindtorch/torch/cuda/memory.py            |  7 +++++++
- mindtorch/torch/distributed/__init__.py   |  2 +-
- mindtorch/torch/distributed/c10d/store.py | 21 ++++++++++++++++++++
- mindtorch/torch/func.py                   | 16 +++++++++++++++
- mindtorch/torch/fx.py                     |  1 +
- mindtorch/torch/library.py                |  5 +++++
- mindtorch/torch/nn/__init__.py            |  2 +-
- mindtorch/torch/nn/parameter.py           |  4 ++++
- mindtorch/torch/ops/__init__.py           | 24 +++++++++++++++++++++--
- mindtorch/torch/types.py                  |  4 ++++
- 17 files changed, 94 insertions(+), 5 deletions(-)
+ mindtorch/torch/_C/_distributed_c10d.py      |  1 +
+ mindtorch/torch/__init__.py                  |  7 +++++-
+ mindtorch/torch/_dynamo/__init__.py          |  1 +
+ mindtorch/torch/_dynamo/config.py            |  2 ++
+ mindtorch/torch/_inductor/__init__.py        |  1 +
+ mindtorch/torch/_inductor/config.py          |  1 +
+ mindtorch/torch/cuda/__init__.py             |  2 ++
+ mindtorch/torch/cuda/memory.py               |  7 ++++++
+ mindtorch/torch/distributed/__init__.py      |  2 +-
+ mindtorch/torch/distributed/c10d/__init__.py |  2 +-
+ mindtorch/torch/distributed/c10d/store.py    | 21 +++++++++++++++++
+ mindtorch/torch/func.py                      | 16 +++++++++++++
+ mindtorch/torch/fx.py                        |  1 +
+ mindtorch/torch/library.py                   |  5 ++++
+ mindtorch/torch/nn/__init__.py               |  2 +-
+ mindtorch/torch/nn/parameter.py              |  4 ++++
+ mindtorch/torch/ops/__init__.py              | 24 ++++++++++++++++++--
+ mindtorch/torch/types.py                     |  4 ++++
+ 18 files changed, 97 insertions(+), 6 deletions(-)
  create mode 100644 mindtorch/torch/_C/_distributed_c10d.py
  create mode 100644 mindtorch/torch/_dynamo/__init__.py
  create mode 100644 mindtorch/torch/_dynamo/config.py
@@ -66,7 +67,11 @@ index 39f90a9..f2177d5 100644
  FloatTensor = Tensor
 diff --git a/mindtorch/torch/_dynamo/__init__.py b/mindtorch/torch/_dynamo/__init__.py
 new file mode 100644
-index 0000000..e69de29
+index 0000000..d63bc18
+--- /dev/null
++++ b/mindtorch/torch/_dynamo/__init__.py
+@@ -0,0 +1 @@
++from . import config
 diff --git a/mindtorch/torch/_dynamo/config.py b/mindtorch/torch/_dynamo/config.py
 new file mode 100644
 index 0000000..0d4f5b7
@@ -77,7 +82,11 @@ index 0000000..0d4f5b7
 +accumulated_cache_size_limit = 256
 diff --git a/mindtorch/torch/_inductor/__init__.py b/mindtorch/torch/_inductor/__init__.py
 new file mode 100644
-index 0000000..e69de29
+index 0000000..d63bc18
+--- /dev/null
++++ b/mindtorch/torch/_inductor/__init__.py
+@@ -0,0 +1 @@
++from . import config
 diff --git a/mindtorch/torch/_inductor/config.py b/mindtorch/torch/_inductor/config.py
 new file mode 100644
 index 0000000..afdab53
@@ -122,6 +131,16 @@ index 7a743fa..5e2d8d6 100644
          Work as _Work,
      )
  
+diff --git a/mindtorch/torch/distributed/c10d/__init__.py b/mindtorch/torch/distributed/c10d/__init__.py
+index 4549853..d9f483d 100644
+--- a/mindtorch/torch/distributed/c10d/__init__.py
++++ b/mindtorch/torch/distributed/c10d/__init__.py
+@@ -1,4 +1,4 @@
+-from .store import Store
++from .store import Store, TCPStore
+ from .prefix_store import PrefixStore
+ from .types import *
+ from .process_group import ProcessGroup
 diff --git a/mindtorch/torch/distributed/c10d/store.py b/mindtorch/torch/distributed/c10d/store.py
 index 7f5a20a..33f081d 100644
 --- a/mindtorch/torch/distributed/c10d/store.py

@@ -20,6 +20,11 @@ Gitee 是 OSCHINA 推出的基于 Git 的代码托管平台（同时支持 SVN�
 4. 通过 `pip3 install .` 安装 vllm_mindspore。
    > 可以通过 `pip3 install -e .` 以开发者模式安装。
 
+
+> 限制：
+> * msadapter 需要申请仓权限。
+> * msadapter 当前仍在开发状态，需要先卸载 torch 进行使用。
+
 #### 使用说明
 
 1. 离线推理

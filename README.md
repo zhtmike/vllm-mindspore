@@ -58,7 +58,7 @@ Gitee 是 OSCHINA 推出的基于 Git 的代码托管平台（同时支持 SVN�
 
 2. 服务化拉起与调试
 
-   1. 拉起服务 `python3 -m vllm_mindspore vllm.entrypoints.openai.api_server --model "/path/to/model_config"`
+   1. 拉起服务 `python3 -m vllm_mindspore.entrypoints vllm.entrypoints.openai.api_server --model "/path/to/model_config"`
    2. 发起请求 `curl http://localhost:8000/v1/completions -H "Content-Type: application/json" -d '{"model": "/path/to/model_config", "prompt": "Llama is", "max_tokens": 120, "temperature": 0}'`
 
 #### 参与贡献

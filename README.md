@@ -28,6 +28,39 @@ Gitee 是 OSCHINA 推出的基于 Git 的代码托管平台（同时支持 SVN�
 
 #### 使用说明
 
+> 环境配置：
+> ```
+> ASCEND_CUSTOM_PATH=${YOUR_CANN_PATH}
+> source ${ASCEND_CUSTOM_PATH}/latest/bin/setenv.bash 
+> export LD_LIBRARY_PATH=${ASCEND_CUSTOM_PATH}/latest/lib64:${ASCEND_CUSTOM_PATH}/latest/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:$LD_LIBRARY_PATH
+> 
+> export ASCEND_HOME=${ASCEND_CUSTOM_PATH}/latest
+> export ASCEND_TOOLKIT_HOME=${ASCEND_HOME}
+> export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH
+> export LD_LIBRARY_PATH=${ASCEND_TOOLKIT_HOME}/lib64:${ASCEND_TOOLKIT_HOME}/lib64/plugin/opskernel:${ASCEND_TOOLKIT_HOME}/lib64/plugin/nnengine:${ASCEND_TOOLKIT_HOME}/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/$(arch):$LD_LIBRARY_PATH
+> export PYTHONPATH=${ASCEND_TOOLKIT_HOME}/python/site-packages:${ASCEND_TOOLKIT_HOME}/opp/built-in/op_impl/ai_core/tbe:$PYTHONPATH
+> export PATH=${ASCEND_TOOLKIT_HOME}/bin:${ASCEND_TOOLKIT_HOME}/compiler/ccec_compiler/bin:$PATH
+> export ASCEND_AICPU_PATH=${ASCEND_TOOLKIT_HOME}
+> export ASCEND_OPP_PATH=${ASCEND_TOOLKIT_HOME}/opp
+> export TOOLCHAIN_HOME=${ASCEND_TOOLKIT_HOME}/toolkit
+> export ASCEND_HOME_PATH=${ASCEND_TOOLKIT_HOME}
+> export ASCEND_CUSTOM_PATH=$ASCEND_HOME_PATH/../
+> 
+> export RUN_MODE=predict
+> export CUSTOM_MATMUL_SHUFFLE=on
+> 
+> export HCCL_DETERMINISTIC=true
+> export ASCEND_LAUNCH_BLOCKING=1
+> export GRAPH_OP_RUN=1
+> export MS_ENABLE_INTERNAL_KERNELS=on
+> export MS_ENABLE_INTERNAL_BOOST=on
+> export MS_INTERNAL_DISABLE_CUSTOM_KERNEL_LIST=RmsNorm
+> export MS_DISABLE_INTERNAL_KERNELS_LIST="Cast,SiLU,NotEqual"
+> export MS_ENABLE_LCCL=off
+> export MS_ENABLE_HCCL=on
+> ```
+
+
 1. 离线推理
 
    ```

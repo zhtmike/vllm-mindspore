@@ -1,14 +1,5 @@
 # vllm_mindspore
 
-#### 介绍
-{**以下是 Gitee 平台说明，您可以替换此简介**
-Gitee 是 OSCHINA 推出的基于 Git 的代码托管平台（同时支持 SVN）。专为开发者提供稳定、高效、安全的云端软件开发协作平台
-无论是个人、团队、或是企业，都能够用 Gitee 实现代码托管、项目管理、协作开发。企业项目请看 [https://gitee.com/enterprises](https://gitee.com/enterprises)}
-
-#### 软件架构
-软件架构说明
-
-
 #### 安装教程
 
 源码安装 vllm_mindspore
@@ -29,38 +20,45 @@ Gitee 是 OSCHINA 推出的基于 Git 的代码托管平台（同时支持 SVN�
 
 #### 使用说明
 
-> 环境配置：
-> ```
-> ASCEND_CUSTOM_PATH=${YOUR_CANN_PATH}
-> source ${ASCEND_CUSTOM_PATH}/latest/bin/setenv.bash 
-> export LD_LIBRARY_PATH=${ASCEND_CUSTOM_PATH}/latest/lib64:${ASCEND_CUSTOM_PATH}/latest/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:$LD_LIBRARY_PATH
-> 
-> export ASCEND_HOME=${ASCEND_CUSTOM_PATH}/latest
-> export ASCEND_TOOLKIT_HOME=${ASCEND_HOME}
-> export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH
-> export LD_LIBRARY_PATH=${ASCEND_TOOLKIT_HOME}/lib64:${ASCEND_TOOLKIT_HOME}/lib64/plugin/opskernel:${ASCEND_TOOLKIT_HOME}/lib64/plugin/nnengine:${ASCEND_TOOLKIT_HOME}/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/$(arch):$LD_LIBRARY_PATH
-> export PYTHONPATH=${ASCEND_TOOLKIT_HOME}/python/site-packages:${ASCEND_TOOLKIT_HOME}/opp/built-in/op_impl/ai_core/tbe:$PYTHONPATH
-> export PATH=${ASCEND_TOOLKIT_HOME}/bin:${ASCEND_TOOLKIT_HOME}/compiler/ccec_compiler/bin:$PATH
-> export ASCEND_AICPU_PATH=${ASCEND_TOOLKIT_HOME}
-> export ASCEND_OPP_PATH=${ASCEND_TOOLKIT_HOME}/opp
-> export TOOLCHAIN_HOME=${ASCEND_TOOLKIT_HOME}/toolkit
-> export ASCEND_HOME_PATH=${ASCEND_TOOLKIT_HOME}
-> export ASCEND_CUSTOM_PATH=$ASCEND_HOME_PATH/../
-> 
-> export RUN_MODE=predict
-> export CUSTOM_MATMUL_SHUFFLE=on
-> 
-> export HCCL_DETERMINISTIC=true
-> export ASCEND_LAUNCH_BLOCKING=1
-> export GRAPH_OP_RUN=1
-> export MS_ENABLE_INTERNAL_KERNELS=on
-> export MS_ENABLE_INTERNAL_BOOST=on
-> export MS_INTERNAL_DISABLE_CUSTOM_KERNEL_LIST=RmsNorm
-> export MS_DISABLE_INTERNAL_KERNELS_LIST="Cast,SiLU,NotEqual"
-> export MS_ENABLE_LCCL=off
-> export MS_ENABLE_HCCL=on
-> ```
+* 运行环境【0127更新】：
 
+  CANN包版本：Milan_C20/20241211  
+  Mindspore版本(commit)：f964af89fdcd29eceb1eaeebacd8eb8cc6156522
+
+* 环境配置：
+
+  ```
+  ASCEND_CUSTOM_PATH=${YOUR_CANN_PATH}
+  source ${ASCEND_CUSTOM_PATH}/latest/bin/setenv.bash 
+  export LD_LIBRARY_PATH=${ASCEND_CUSTOM_PATH}/latest/lib64:${ASCEND_CUSTOM_PATH}/latest/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:$LD_LIBRARY_PATH
+  
+  export ASCEND_HOME=${ASCEND_CUSTOM_PATH}/latest
+  export ASCEND_TOOLKIT_HOME=${ASCEND_HOME}
+  export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH
+  export LD_LIBRARY_PATH=${ASCEND_TOOLKIT_HOME}/lib64:${ASCEND_TOOLKIT_HOME}/lib64/plugin/opskernel:${ASCEND_TOOLKIT_HOME}/lib64/plugin/nnengine:${ASCEND_TOOLKIT_HOME}/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/$(arch):$LD_LIBRARY_PATH
+  export PYTHONPATH=${ASCEND_TOOLKIT_HOME}/python/site-packages:${ASCEND_TOOLKIT_HOME}/opp/built-in/op_impl/ai_core/tbe:$PYTHONPATH
+  export PATH=${ASCEND_TOOLKIT_HOME}/bin:${ASCEND_TOOLKIT_HOME}/compiler/ccec_compiler/bin:$PATH
+  export ASCEND_AICPU_PATH=${ASCEND_TOOLKIT_HOME}
+  export ASCEND_OPP_PATH=${ASCEND_TOOLKIT_HOME}/opp
+  export TOOLCHAIN_HOME=${ASCEND_TOOLKIT_HOME}/toolkit
+  export ASCEND_HOME_PATH=${ASCEND_TOOLKIT_HOME}
+  export ASCEND_CUSTOM_PATH=$ASCEND_HOME_PATH/../
+  
+  export RUN_MODE=predict
+  export CUSTOM_MATMUL_SHUFFLE=on
+  
+  export HCCL_DETERMINISTIC=true
+  export ASCEND_LAUNCH_BLOCKING=1
+  export GRAPH_OP_RUN=1
+  export MS_ENABLE_INTERNAL_KERNELS=on
+  export MS_ENABLE_INTERNAL_BOOST=on
+  export MS_INTERNAL_DISABLE_CUSTOM_KERNEL_LIST=RmsNorm
+  export MS_DISABLE_INTERNAL_KERNELS_LIST="Cast,SiLU,NotEqual"
+  export MS_ENABLE_LCCL=off
+  export MS_ENABLE_HCCL=on
+  ```
+
+##### 推理
 
 1. 离线推理
 

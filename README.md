@@ -14,7 +14,7 @@
 
 
 > 限制：
-> * msadapter 需要申请仓权限： https://gitee.com/mindspore/msadapter。
+> * msadapter 需要申请仓权限： `https://gitee.com/mindspore/msadapter` 。
 > * msadapter 当前仍在开发状态，需要先卸载 torch 进行使用。
 > * 依赖的 CANN 和 MindSpore 仍处于开发态未正式发布，可通过 `https://repo.mindspore.cn/mindspore/mindspore/version` 获取每日构建版本，并安装对应的 CANN 配套环境。
 

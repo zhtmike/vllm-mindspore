@@ -19,10 +19,7 @@ from typing import List, Tuple
 
 from vllm.sequence import IntermediateTensors
 
-from vllm_mindspore.distributed import (
-    get_pipeline_model_parallel_rank,
-    get_pipeline_model_parallel_world_size,
-)
+from vllm_mindspore.utils import STR_DTYPE_TO_MS_DTYPE
 
 import mindspore as ms
 from mindspore import mint
@@ -88,12 +85,11 @@ def make_layers(
     """Make a list of layers with the given layer function, taking
     pipeline parallelism into account.
     """
-    from vllm_mindspore.distributed.utils import get_pp_indices
+    from vllm.distributed.parallel_state import get_pp_group
+    from vllm.distributed.utils import get_pp_indices
 
     start_layer, end_layer = get_pp_indices(
-        num_hidden_layers,
-        get_pipeline_model_parallel_rank(),
-        get_pipeline_model_parallel_world_size(),
+        num_hidden_layers, get_pp_group().rank_in_group, get_pp_group().world_size
     )
     modules = ms.nn.CellList(
         [PPMissingLayer() for _ in range(start_layer)]
@@ -113,6 +109,8 @@ def make_empty_intermediate_tensors_factory(keys: List[str], hidden_size: int):
         dtype,
         device,
     ) -> IntermediateTensors:
+        if isinstance(dtype, str):
+            dtype = STR_DTYPE_TO_MS_DTYPE[dtype]
         return IntermediateTensors(
             {key: mint.zeros((batch_size, hidden_size), dtype=dtype) for key in keys}
         )

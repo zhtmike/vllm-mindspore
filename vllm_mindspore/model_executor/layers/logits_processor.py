@@ -22,7 +22,7 @@ import mindspore.nn as nn
 from mindspore import Tensor
 from mindspore import mint
 
-from vllm_mindspore.distributed import (
+from vllm.distributed import (
     tensor_model_parallel_all_gather,
     tensor_model_parallel_gather,
 )

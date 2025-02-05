@@ -25,7 +25,7 @@ from mindspore import Parameter
 import numpy as np
 
 # 需要有一个基于mindspore的并行基类， 可以查询rank ，world_size 的信息。
-from vllm_mindspore.distributed import (
+from vllm.distributed import (
     divide,
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,

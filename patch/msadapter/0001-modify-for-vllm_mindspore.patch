@@ -1,34 +1,37 @@
-From b790cb5543bb4b5b05f0dfba1884e4b4cf4acd47 Mon Sep 17 00:00:00 2001
+From b8fe0b4c335669f5cd19a63f405e2f0941fd5066 Mon Sep 17 00:00:00 2001
 From: tronzhang <zhangzhaochuang@huawei.com>
-Date: Thu, 23 Jan 2025 19:46:48 +0800
+Date: Fri, 24 Jan 2025 14:24:42 +0800
 Subject: [PATCH] modify for vllm_mindspore
 
 ---
- mindtorch/torch/_C/_distributed_c10d.py      |  1 +
- mindtorch/torch/__init__.py                  |  7 +++++-
- mindtorch/torch/_dynamo/__init__.py          |  1 +
- mindtorch/torch/_dynamo/config.py            |  2 ++
- mindtorch/torch/_inductor/__init__.py        |  1 +
- mindtorch/torch/_inductor/config.py          |  1 +
- mindtorch/torch/cuda/__init__.py             |  2 ++
- mindtorch/torch/cuda/memory.py               |  7 ++++++
- mindtorch/torch/distributed/__init__.py      |  2 +-
- mindtorch/torch/distributed/c10d/__init__.py |  2 +-
- mindtorch/torch/distributed/c10d/store.py    | 21 +++++++++++++++++
- mindtorch/torch/func.py                      | 16 +++++++++++++
- mindtorch/torch/fx.py                        |  1 +
- mindtorch/torch/library.py                   |  5 ++++
- mindtorch/torch/nn/__init__.py               |  2 +-
- mindtorch/torch/nn/parameter.py              |  4 ++++
- mindtorch/torch/ops/__init__.py              | 24 ++++++++++++++++++--
- mindtorch/torch/types.py                     |  4 ++++
- 18 files changed, 97 insertions(+), 6 deletions(-)
+ mindtorch/torch/_C/_distributed_c10d.py       |  1 +
+ mindtorch/torch/__init__.py                   | 35 +++++++++-
+ mindtorch/torch/_dynamo/__init__.py           |  1 +
+ mindtorch/torch/_dynamo/config.py             |  2 +
+ mindtorch/torch/_inductor/__init__.py         |  1 +
+ mindtorch/torch/_inductor/config.py           |  1 +
+ mindtorch/torch/_tensor.py                    |  8 ++-
+ mindtorch/torch/cuda/__init__.py              | 47 ++++++++++++-
+ mindtorch/torch/distributed/__init__.py       |  2 +-
+ mindtorch/torch/distributed/c10d/__init__.py  |  2 +-
+ .../torch/distributed/c10d/process_group.py   |  4 ++
+ mindtorch/torch/distributed/c10d/store.py     | 21 ++++++
+ .../torch/distributed/distributed_c10d.py     | 69 ++++++++++++++++++-
+ mindtorch/torch/distributed/scheduler_init.py | 58 ++++++++++++++++
+ mindtorch/torch/func.py                       | 16 +++++
+ mindtorch/torch/fx.py                         |  1 +
+ mindtorch/torch/library.py                    |  5 ++
+ mindtorch/torch/nn/__init__.py                |  2 +-
+ mindtorch/torch/nn/parameter.py               |  4 ++
+ mindtorch/torch/ops/__init__.py               | 24 ++++++-
+ mindtorch/torch/types.py                      |  4 ++
+ 21 files changed, 297 insertions(+), 11 deletions(-)
  create mode 100644 mindtorch/torch/_C/_distributed_c10d.py
  create mode 100644 mindtorch/torch/_dynamo/__init__.py
  create mode 100644 mindtorch/torch/_dynamo/config.py
  create mode 100644 mindtorch/torch/_inductor/__init__.py
  create mode 100644 mindtorch/torch/_inductor/config.py
- create mode 100644 mindtorch/torch/cuda/memory.py
+ create mode 100644 mindtorch/torch/distributed/scheduler_init.py
  create mode 100644 mindtorch/torch/func.py
  create mode 100644 mindtorch/torch/fx.py
  create mode 100644 mindtorch/torch/library.py
@@ -41,23 +44,44 @@ index 0000000..fa0b828
 @@ -0,0 +1 @@
 +from torch.distributed import Store, TCPStore
 diff --git a/mindtorch/torch/__init__.py b/mindtorch/torch/__init__.py
-index 39f90a9..f2177d5 100644
+index 39f90a9..c57ff0b 100644
 --- a/mindtorch/torch/__init__.py
 +++ b/mindtorch/torch/__init__.py
-@@ -57,7 +57,11 @@ nan = float("nan")
+@@ -55,9 +55,32 @@ dtype = Type
+ inf = float("inf")
+ nan = float("nan")
  
++
  class device:
      def __init__(self, name):
 -        pass
-+        self.type = name
++        if isinstance(name, device):
++            if hasattr(name, "type"):
++                self.type = name.type
++            
++            if hasattr(name, "index"):
++                self.index = name.index
++            
++            return
++        
++        names = name.split(":")
++        if len(names) == 1:
++            self.type = names[0]
++        elif len(names) == 2:
++            self.type = names[0]
++            import builtins
++            self.index = builtins.int(names[1])
++        else:
++            raise ValueError("Invalid device arguments: %s!" % str(name))
 +
 +    def __enter__(self): ...
 +
 +    def __exit__(self, type, value, traceback): ...
++
  
  from ._C.size import Size
  
-@@ -71,6 +75,7 @@ from . import optim, ops, nn, distributions, cuda, distributed#, multiprocessing
+@@ -71,6 +94,7 @@ from . import optim, ops, nn, distributions, cuda, distributed#, multiprocessing
  from .autograd import no_grad, enable_grad, value_and_grad, inference_mode
  from ._bind import get_default_dtype, set_default_dtype
  from . import profiler
@@ -65,6 +89,20 @@ index 39f90a9..f2177d5 100644
  
  BoolTensor = Tensor
  FloatTensor = Tensor
+@@ -121,4 +145,13 @@ def compile(fn=None, *args, **kwargs):
+         return wrap_func(fn)
+     return wrap_func
+ 
++
++def get_num_threads():
++    return os.cpu_count()
++
++
++def set_num_threads(thread_num):
++    pass
++
++
+ __version__ = "2.5"
 diff --git a/mindtorch/torch/_dynamo/__init__.py b/mindtorch/torch/_dynamo/__init__.py
 new file mode 100644
 index 0000000..d63bc18
@@ -94,30 +132,110 @@ index 0000000..afdab53
 +++ b/mindtorch/torch/_inductor/config.py
 @@ -0,0 +1 @@
 +compile_threads = 1
+diff --git a/mindtorch/torch/_tensor.py b/mindtorch/torch/_tensor.py
+index 8541161..00cd4ab 100644
+--- a/mindtorch/torch/_tensor.py
++++ b/mindtorch/torch/_tensor.py
+@@ -7,6 +7,7 @@ from mindspore._c_expression import Tensor as Tensor_
+ from ._utils import _rebuild_tensor_v2
+ from ._C.size import Size
+ from .ops import transpose, mean, unsqueeze, pow
++from torch import device
+ 
+ MS_PT_DTYPE_MAP = {
+     'Float32': 'torch.cuda.FloatTensor',
+@@ -123,8 +124,8 @@ def __or__(self, other):
+ Tensor.__or__ = __or__
+ StubTensor.__or__ = __or__
+ 
+-Tensor.device = 'Ascend'
+-StubTensor.device = 'Ascend'
++Tensor.device = device('Ascend')
++StubTensor.device = device('Ascend')
+ 
+ def div_(self, value, *, rounding_mode=None):
+     out = self.div(value, rounding_mode=rounding_mode)
+@@ -171,6 +172,9 @@ StubTensor.mean = mean
+ Tensor.is_cuda = True
+ StubTensor.is_cuda = True
+ 
++Tensor.is_cpu = False
++StubTensor.is_cpu = False
++
+ Tensor.expand = mint.broadcast_to
+ StubTensor.expand = mint.broadcast_to
+ 
 diff --git a/mindtorch/torch/cuda/__init__.py b/mindtorch/torch/cuda/__init__.py
-index 661ed57..4b932c6 100644
+index 661ed57..19ecb8e 100644
 --- a/mindtorch/torch/cuda/__init__.py
 +++ b/mindtorch/torch/cuda/__init__.py
-@@ -39,3 +39,5 @@ class device:
+@@ -1,9 +1,12 @@
+-from typing import Any
++from typing import Any, Tuple, Union
+ 
++import mindspore as ms
+ from mindspore import Tensor
+ from mindspore import get_rng_state, set_rng_state, manual_seed
+ from mindspore.hal import *
+ 
++from torch.types import Device
++
+ FloatTensor = Tensor
+ HalfTensor = Tensor
+ BFloat16Tensor = Tensor
+@@ -18,7 +21,8 @@ def is_available():
+     return True
+ 
+ def set_device(device):
+-    pass
++    if hasattr(device, "index"):
++        ms.set_context(device_id=device.index)
+ 
+ def _lazy_call(callable, **kwargs):
+     callable()
+@@ -39,3 +43,42 @@ class device:
  
      def __exit__(self, type: Any, value: Any, traceback: Any):
          return False
 +
-+from .memory import *
-\ No newline at end of file
-diff --git a/mindtorch/torch/cuda/memory.py b/mindtorch/torch/cuda/memory.py
-new file mode 100644
-index 0000000..8ac0109
---- /dev/null
-+++ b/mindtorch/torch/cuda/memory.py
-@@ -0,0 +1,7 @@
-+from typing import Union, Tuple
 +
-+from torch.types import Device
++def _try_initial_ascend():
++    x = ms.tensor(1)
++    _ = ms.ops.add(x, 0)
++
++
++def memory_stats(device_target=None):
++    res = ms.hal.memory_stats(device_target)
++    if not res:
++        _try_initial_ascend()
++        res = ms.hal.memory_stats(device_target)
++
++    stats = {
++        "allocated_bytes.all.peak": res.get("max_allocated_memory", 0),
++        "allocated_bytes.all.current": res.get("total_allocated_memory", 0),
++    }
++    return stats
++
++
++def max_memory_allocated(device_target=None):
++    res = ms.hal.memory_stats()
++    if not res:
++        _try_initial_ascend()
++        res = ms.hal.memory_stats(device_target)
++
++    return res.get("max_allocated_memory", 0)
 +
 +
 +def mem_get_info(device: Union[Device, int] = None) -> Tuple[int, int]:
-+    return (25000, 29000)
++    if not isinstance(device, int):
++        device = ms.context.get_context("device_id")
++    
++    res = ms.hal.get_device_properties(device)
++    if res.total_memory == 0:
++        _try_initial_ascend()
++        res = ms.hal.get_device_properties(device)
++    
++    return (res.free_memory, res.total_memory)
 diff --git a/mindtorch/torch/distributed/__init__.py b/mindtorch/torch/distributed/__init__.py
 index 7a743fa..5e2d8d6 100644
 --- a/mindtorch/torch/distributed/__init__.py
@@ -141,6 +259,21 @@ index 4549853..d9f483d 100644
  from .prefix_store import PrefixStore
  from .types import *
  from .process_group import ProcessGroup
+diff --git a/mindtorch/torch/distributed/c10d/process_group.py b/mindtorch/torch/distributed/c10d/process_group.py
+index da5f3f3..cf51471 100644
+--- a/mindtorch/torch/distributed/c10d/process_group.py
++++ b/mindtorch/torch/distributed/c10d/process_group.py
+@@ -189,6 +189,10 @@ class ProcessGroup:
+     def get_device_types(self) -> List[Any]:
+         return list(self.device_types)
+ 
++    @property
++    def _device_types(self) -> List[Any]:
++        return self.get_device_types()
++
+     def set_group_name(self, name: str):
+         for backend in self.device_type_to_backend.values():
+             backend.set_group_uid(name)
 diff --git a/mindtorch/torch/distributed/c10d/store.py b/mindtorch/torch/distributed/c10d/store.py
 index 7f5a20a..33f081d 100644
 --- a/mindtorch/torch/distributed/c10d/store.py
@@ -177,6 +310,185 @@ index 7f5a20a..33f081d 100644
 +
 +    @property
 +    def port(self) -> int: ...
+diff --git a/mindtorch/torch/distributed/distributed_c10d.py b/mindtorch/torch/distributed/distributed_c10d.py
+index 1044ef5..a1d21ff 100644
+--- a/mindtorch/torch/distributed/distributed_c10d.py
++++ b/mindtorch/torch/distributed/distributed_c10d.py
+@@ -10,6 +10,7 @@ import itertools
+ import logging
+ import os
+ import pickle
++import subprocess
+ import sys
+ import time
+ import warnings
+@@ -18,6 +19,7 @@ from datetime import timedelta
+ from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+ import mindspore.communication._comm_helper
+ from typing_extensions import deprecated
++from pathlib import Path
+ 
+ import numpy as np
+ import mindspore
+@@ -1365,6 +1367,38 @@ def _set_pg_timeout(timeout: timedelta, group: Optional[ProcessGroup] = None) ->
+         backend._set_default_timeout(timeout)
+ 
+ 
++class _Tmp:
++    def __init__(self):
++        self.sched_p = None
++
++    def set_sched_process(self, p):
++        self.sched_p = p
++
++    def __del__(self):
++        if self.sched_p:
++            try:
++                self.sched_p.kill()
++            except Exception:
++                pass
++
++
++_tmp = _Tmp()
++
++
++def _get_host_and_ip(distributed_init_method):
++    try:
++        _, ip_str, port_str = distributed_init_method.split(":")
++        ip = ip_str.split("/")[-1]
++        port = int(port_str)
++    except Exception as e:
++        raise RuntimeError(
++            "Cannot get host and port information from %s, error: %s!"
++            % (distributed_init_method, str(e))
++        )
++
++    return ip, port
++
++
+ @_exception_logger
+ def init_process_group(
+     backend: Optional[str] = None,
+@@ -1461,6 +1495,37 @@ def init_process_group(
+ 
+     if GroupMember.WORLD is not None:
+         raise ValueError("trying to initialize the default process group twice!")
++    
++    if not os.getenv("MS_ROLE"):
++        # Not call from msrun, should call a subprocess for scheduler.
++        if rank == 0:
++            with open(str(Path() / "schedule.log"), "w") as scheduler_f:
++                script = Path(__file__).parent / "scheduler_init.py"
++                sched_p = subprocess.Popen(
++                    [
++                        sys.executable,
++                        str(script),
++                        "--rank_id",
++                        str(rank),
++                        "--rank_size",
++                        str(world_size),
++                        "--distributed_init_method",
++                        str(init_method),
++                    ],
++                    shell=False,
++                    stdout=scheduler_f,
++                    stderr=subprocess.STDOUT,
++                )
++                global _tmp
++                _tmp.set_sched_process(sched_p)
++
++        os.environ["MS_WORKER_NUM"] = str(world_size)
++        os.environ["MS_ROLE"] = "MS_WORKER"
++        os.environ["MS_NODE_ID"] = str(rank)
++        comm_addr, comm_port = _get_host_and_ip(init_method)
++        os.environ["MS_SCHED_HOST"] = str(comm_addr)
++        os.environ["MS_SCHED_PORT"] = str(comm_port)
++        os.environ["DEVICE_ID"] = str(rank)
+ 
+     # do mindspore communication init
+     init(backend_name=backend)
+@@ -2998,7 +3063,7 @@ def broadcast_object_list(
+         object_sizes_tensor = torch.cat(size_list)
+     else:
+         object_sizes_tensor = torch.empty(
+-            len(object_list), dtype=torch.long, device=current_device
++            len(object_list), dtype=torch.int32, device=current_device
+         )
+ 
+     # Broadcast object sizes
+@@ -4509,6 +4574,8 @@ def new_group(
+     multiple overlaping process groups. To avoid that, make sure all ranks follow the
+     same global creation order.
+     """
++    # TODO(tronzhang): "gloo" cpu not support...
++    backend = "hccl"
+     return _new_group_with_tag(
+         ranks,
+         timeout,
+diff --git a/mindtorch/torch/distributed/scheduler_init.py b/mindtorch/torch/distributed/scheduler_init.py
+new file mode 100644
+index 0000000..02c907d
+--- /dev/null
++++ b/mindtorch/torch/distributed/scheduler_init.py
+@@ -0,0 +1,58 @@
++#!/usr/bin/env python3
++# encoding: utf-8
++# Copyright 2025 Huawei Technologies Co., Ltd
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++# http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++# ============================================================================
++
++import argparse
++import os
++
++import mindspore as ms
++
++
++def _get_host_and_ip(distributed_init_method):
++    try:
++        _, ip_str, port_str = distributed_init_method.split(":")
++        ip = ip_str.split("/")[-1]
++        port = int(port_str)
++    except Exception as e:
++        raise RuntimeError(
++            "Cannot get host and port information from %s, error: %s!"
++            % (distributed_init_method, str(e))
++        )
++
++    return ip, port
++
++
++def init_ms_distributed(rank_id, rank_size, distributed_init_method):
++    comm_addr, comm_port = _get_host_and_ip(distributed_init_method)
++
++    os.environ["MS_WORKER_NUM"] = str(rank_size)
++    os.environ["MS_ROLE"] = "MS_SCHED"
++    os.environ["MS_NODE_ID"] = str(rank_id)
++    os.environ["MS_SCHED_HOST"] = str(comm_addr)
++    os.environ["MS_SCHED_PORT"] = str(comm_port)
++    os.environ["DEVICE_ID"] = str(rank_id)
++    ms.communication.init()
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser()
++
++    parser.add_argument("--rank_id", type=int, default=None, help="")
++    parser.add_argument("--rank_size", type=int, default=None, help="")
++    parser.add_argument("--distributed_init_method", type=str, default=None, help="")
++
++    args = parser.parse_args()
++    init_ms_distributed(args.rank_id, args.rank_size, args.distributed_init_method)
 diff --git a/mindtorch/torch/func.py b/mindtorch/torch/func.py
 new file mode 100644
 index 0000000..fec0fa0

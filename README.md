@@ -4,12 +4,13 @@
 
 源码安装 vllm_mindspore
 
-1. 下载源码 `git clone https://gitee.com/mindspore/vllm_mindspore.git`
-2. `cd vllm_mindspore`
-3. (可选) 若当前没有安装 vllm 对应版本，则通过 `bash install_vllm.sh` 进行安装。
+1. 安装 mindspore master 分支对应每日包(版本号 >= 2.5.0)
+2. 下载源码 `git clone https://gitee.com/mindspore/vllm_mindspore.git`
+3. `cd vllm_mindspore`
+4. (可选) 若当前没有安装 vllm 对应版本，则通过 `bash install_vllm.sh` 进行安装。
    > 可以通过 `bash install_vllm.sh develop` 以开发者模式安装。
-4. (当前msadapter带来的限制，后续清除) 卸载 torch `pip3 uninstall torch`
-5. 通过 `pip3 install .` 安装 vllm_mindspore。
+5. (当前msadapter带来的限制，后续清除) 卸载 torch `pip3 uninstall torch`
+6. 通过 `pip3 install .` 安装 vllm_mindspore。
    > 可以通过 `pip3 install -e .` 以开发者模式安装。
 
 
@@ -22,8 +23,8 @@
 
 * 运行环境【0127更新】：
 
-  CANN包版本：Milan_C20/20241211  
-  Mindspore版本(commit)：f964af89fdcd29eceb1eaeebacd8eb8cc6156522
+  CANN包版本：Milan_C20/20241231
+  Mindspore每日版本: 20250125
 
 * 环境配置：
 
@@ -43,19 +44,6 @@
   export TOOLCHAIN_HOME=${ASCEND_TOOLKIT_HOME}/toolkit
   export ASCEND_HOME_PATH=${ASCEND_TOOLKIT_HOME}
   export ASCEND_CUSTOM_PATH=$ASCEND_HOME_PATH/../
-  
-  export RUN_MODE=predict
-  export CUSTOM_MATMUL_SHUFFLE=on
-  
-  export HCCL_DETERMINISTIC=true
-  export ASCEND_LAUNCH_BLOCKING=1
-  export GRAPH_OP_RUN=1
-  export MS_ENABLE_INTERNAL_KERNELS=on
-  export MS_ENABLE_INTERNAL_BOOST=on
-  export MS_INTERNAL_DISABLE_CUSTOM_KERNEL_LIST=RmsNorm
-  export MS_DISABLE_INTERNAL_KERNELS_LIST="Cast,SiLU,NotEqual"
-  export MS_ENABLE_LCCL=off
-  export MS_ENABLE_HCCL=on
   ```
 
 ##### 推理

@@ -23,7 +23,7 @@ import mindspore as ms
 from mindspore import mint
 from mindspore import Parameter
 
-from vllm_mindspore.distributed import (
+from vllm.distributed import (
     divide,
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,

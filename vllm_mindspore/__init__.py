@@ -32,6 +32,10 @@ if "vllm" in sys.modules:
         "vllm import before vllm_mindspore, vllm_mindspore cannot worker right!"
     )
 
+from vllm_mindspore.scripts import env_setup
+
+env_setup()
+
 from vllm_mindspore.platforms.ascend import AscendPlatform
 
 ascend_platform = AscendPlatform()
@@ -39,9 +43,11 @@ ascend_platform = AscendPlatform()
 import vllm.config
 
 vllm.config.current_platform = ascend_platform
+
 import vllm.platforms
 
 vllm.platforms.current_platform = ascend_platform
+
 import vllm.utils
 
 vllm.utils.current_platform = ascend_platform
@@ -52,6 +58,8 @@ from vllm_mindspore.utils import (
     make_tensor_with_pad,
     async_tensor_h2d,
     get_dtype_size,
+    ascend_device_count_stateless,
+    ascend_is_initialized,
 )
 
 vllm.utils.direct_register_custom_op = direct_register_custom_op
@@ -59,11 +67,19 @@ vllm.utils.memory_profiling = memory_profiling
 vllm.utils.make_tensor_with_pad = make_tensor_with_pad
 vllm.utils.async_tensor_h2d = async_tensor_h2d
 vllm.utils.get_dtype_size = get_dtype_size
+vllm.utils.cuda_device_count_stateless = ascend_device_count_stateless
+vllm.utils.cuda_is_initialized = ascend_is_initialized
+vllm.config.cuda_device_count_stateless = ascend_device_count_stateless
+
+import vllm.executor
+
+vllm.executor.cuda_device_count_stateless = ascend_device_count_stateless
 
 from vllm_mindspore.model_executor.models.registry import (
     MindSporeModelRegistry,
     _run_in_subprocess,
 )
+
 import vllm.model_executor
 
 vllm.model_executor.models.ModelRegistry = MindSporeModelRegistry
@@ -98,6 +114,7 @@ vllm.model_executor.sampling_metadata.SamplingMetadataCache = SamplingMetadataCa
 vllm.model_executor.sampling_metadata.SamplingMetadata = SamplingMetadata
 
 from vllm_mindspore.attention.selector import get_ms_attn_backend
+
 import vllm.attention
 
 vllm.attention.get_attn_backend = get_ms_attn_backend
@@ -107,68 +124,41 @@ from vllm_mindspore.worker.cache_engine import (
     ms_swap_in,
     ms_swap_out,
 )
+
 import vllm.worker.cache_engine
 
 vllm.worker.cache_engine.CacheEngine._allocate_kv_cache = ms_allocate_kv_cache
 vllm.worker.cache_engine.CacheEngine.swap_in = ms_swap_in
 vllm.worker.cache_engine.CacheEngine.swap_out = ms_swap_out
 
-from vllm_mindspore.distributed.parallel_state import (
-    initialize_model_parallel,
-    init_distributed_environment,
-    ensure_kv_transfer_initialized,
-    model_parallel_is_initialized,
-    ensure_model_parallel_initialized,
-)
-
-
-class PP:
-    def __init__(self):
-        self.is_first_rank = True
-        self.is_last_rank = True
-
-
-def get_pp_group():
-    return PP()
-
-
-import vllm.distributed.parallel_state
-
-vllm.distributed.parallel_state.get_pp_group = get_pp_group
-vllm.distributed.parallel_state.initialize_model_parallel = initialize_model_parallel
-vllm.distributed.parallel_state.init_distributed_environment = (
-    init_distributed_environment
-)
-vllm.distributed.parallel_state.ensure_kv_transfer_initialized = (
-    ensure_kv_transfer_initialized
-)
-vllm.distributed.parallel_state.model_parallel_is_initialized = (
-    model_parallel_is_initialized
-)
-vllm.distributed.parallel_state.ensure_model_parallel_initialized = (
-    ensure_model_parallel_initialized
-)
-
-vllm.distributed.get_pp_group = get_pp_group
-vllm.distributed.init_distributed_environment = init_distributed_environment
-vllm.distributed.ensure_kv_transfer_initialized = ensure_kv_transfer_initialized
-vllm.distributed.model_parallel_is_initialized = model_parallel_is_initialized
-vllm.distributed.ensure_model_parallel_initialized = ensure_model_parallel_initialized
-
-from vllm_mindspore.worker.worker import (
-    _warm_up_model,
-    determine_num_available_blocks,
-    prepare_worker_input,
-)
+from vllm_mindspore.worker.worker import _warm_up_model, prepare_worker_input
 from vllm.worker.worker import Worker
 
 Worker._warm_up_model = _warm_up_model
-Worker.determine_num_available_blocks = determine_num_available_blocks
 Worker.prepare_worker_input = prepare_worker_input
-vllm.worker.worker_base.get_pp_group = get_pp_group
 
-from vllm_mindspore.worker.model_runner import _get_cuda_graph_pad_size
+from vllm_mindspore.worker.model_runner import _get_cuda_graph_pad_size, profile_run
 
 vllm.worker.model_runner.ModelInputForGPUBuilder._get_cuda_graph_pad_size = (
     _get_cuda_graph_pad_size
 )
+vllm.worker.model_runner.GPUModelRunnerBase.profile_run = profile_run
+
+from vllm_mindspore.distributed.parallel_state import (
+    all_reduce_for_GroupCoordinator,
+    init_for_GroupCoordinator,
+    init_model_parallel_group,
+)
+
+vllm.distributed.parallel_state.GroupCoordinator.all_reduce = (
+    all_reduce_for_GroupCoordinator
+)
+vllm.distributed.parallel_state.GroupCoordinator.__init__ = init_for_GroupCoordinator
+vllm.distributed.parallel_state.init_model_parallel_group = init_model_parallel_group
+
+from vllm_mindspore.executor.multiproc_worker_utils import (
+    get_mp_context as ms_get_mp_context,
+)
+from vllm.executor.multiproc_worker_utils import get_mp_context
+
+vllm.executor.multiproc_worker_utils.get_mp_context = ms_get_mp_context

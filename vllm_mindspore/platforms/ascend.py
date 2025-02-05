@@ -20,17 +20,13 @@ from typing import TYPE_CHECKING, Optional
 
 import torch
 
+from vllm.platforms.interface import DeviceCapability, Platform, PlatformEnum, _Backend
+from vllm.logger import init_logger
 
 if TYPE_CHECKING:
     from vllm.config import VllmConfig
 else:
     VllmConfig = None
-
-from typing import TYPE_CHECKING, Optional
-
-from vllm.platforms.interface import DeviceCapability, Platform, PlatformEnum, _Backend
-
-from vllm.logger import init_logger
 
 logger = init_logger(__name__)
 

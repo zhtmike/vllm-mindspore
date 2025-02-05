@@ -22,20 +22,10 @@ from vllm.logger import init_logger
 
 logger = init_logger(__name__)
 
-from vllm_mindspore.utils import MsKVCache
+from vllm_mindspore.utils import MsKVCache, STR_DTYPE_TO_MS_DTYPE
 
 import mindspore as ms
 from mindspore.common.initializer import Zero
-
-STR_DTYPE_TO_MS_DTYPE = {
-    "half": ms.float16,
-    "float16": ms.float16,
-    "bfloat16": ms.bfloat16,
-    "float": ms.float32,
-    "fp8": ms.uint8,
-    "fp8_e4m3": ms.uint8,
-    "fp8_e5m2": ms.uint8,
-}
 
 
 def create_block(shape, dtype, name=None, device=None):

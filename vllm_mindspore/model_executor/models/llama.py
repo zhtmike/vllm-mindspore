@@ -22,12 +22,7 @@ if TYPE_CHECKING:
 else:
     LlamaConfig = None
 
-# TODO(tronzhang): use vllm's latter...
-from vllm_mindspore.distributed.parallel_state import (
-    is_first_pp_rank,
-    is_last_pp_rank,
-    get_tensor_model_parallel_world_size,
-)
+from vllm.distributed import get_pp_group, get_tensor_model_parallel_world_size
 
 from vllm_mindspore.model_executor.layers.linear import (
     MergedColumnParallelLinear,
@@ -322,7 +317,9 @@ class LlamaModel(ms.nn.Cell):
         quant_config = None
         cache_config = None
 
-        if is_first_pp_rank() or (config.tie_word_embeddings and is_last_pp_rank()):
+        if get_pp_group().is_first_rank or (
+            config.tie_word_embeddings and get_pp_group().is_last_rank
+        ):
             self.embed_tokens = VocabParallelEmbedding(
                 self.vocab_size,
                 config.hidden_size,
@@ -343,7 +340,7 @@ class LlamaModel(ms.nn.Cell):
             prefix=f"{prefix}.layers",
         )
 
-        if is_last_pp_rank():
+        if get_pp_group().is_last_rank:
             self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         else:
             self.norm = PPMissingLayer()
@@ -365,7 +362,7 @@ class LlamaModel(ms.nn.Cell):
         intermediate_tensors=None,
         inputs_embeds: Optional[Tensor] = None,
     ):
-        if is_first_pp_rank():
+        if get_pp_group().is_first_rank:
             if inputs_embeds is not None:
                 hidden_states = inputs_embeds
             else:
@@ -386,7 +383,7 @@ class LlamaModel(ms.nn.Cell):
                 residual,
             )
 
-        if not is_last_pp_rank():
+        if not get_pp_group().is_last_rank:
             return IntermediateTensors(
                 {"hidden_states": hidden_states, "residual": residual}
             )
@@ -442,7 +439,7 @@ class LlamaForCausalLM(MsModelBase):
         quant_config = vllm_config.quant_config
         self.model = LlamaModel(vllm_config=self.config)
 
-        if is_last_pp_rank():
+        if get_pp_group().is_last_rank:
             self.unpadded_vocab_size = self.config.vocab_size
             # TODO: To support lora
             # if self.lora_config:

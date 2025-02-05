@@ -17,6 +17,8 @@
 
 import contextlib
 import gc
+import logging
+import os
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -34,9 +36,25 @@ if TYPE_CHECKING:
 else:
     Library = None
 
+from vllm.utils import T, TORCH_DTYPE_TO_NUMPY_DTYPE, make_ndarray_with_pad
+
 import mindspore as ms
+from mindspore.common.initializer import Zero
 
 MsKVCache = Tuple[ms.Tensor, ms.Tensor]
+
+logger = logging.getLogger(__name__)
+
+
+STR_DTYPE_TO_MS_DTYPE = {
+    "half": ms.float16,
+    "float16": ms.float16,
+    "bfloat16": ms.bfloat16,
+    "float": ms.float32,
+    "fp8": ms.uint8,
+    "fp8_e4m3": ms.uint8,
+    "fp8_e5m2": ms.uint8,
+}
 
 
 def direct_register_custom_op(
@@ -114,16 +132,30 @@ def memory_profiling(
     # the part of memory used for holding the model weights
     result.weights_memory_in_bytes = weights_memory_in_bytes
 
+    result.before_profile.measure()
+
     yield result
 
     gc.collect()
     torch.cuda.empty_cache()
 
+    result.after_profile.measure()
 
-from vllm.utils import T, TORCH_DTYPE_TO_NUMPY_DTYPE, make_ndarray_with_pad
-
-import mindspore as ms
-from mindspore.common.initializer import Zero
+    diff = result.after_profile - result.before_profile
+    result.torch_peak_increase_in_bytes = diff.torch_peak_in_bytes
+    current_cuda_memory_bytes = result.after_profile.torch_memory_in_bytes
+    result.non_torch_increase_in_bytes = (
+        current_cuda_memory_bytes
+        - baseline_memory_in_bytes
+        - weights_memory_in_bytes
+        - diff.torch_memory_in_bytes
+    )  # noqa
+    result.profile_time = diff.timestamp
+    result.non_kv_cache_memory_in_bytes = (
+        result.non_torch_increase_in_bytes
+        + result.torch_peak_increase_in_bytes
+        + result.weights_memory_in_bytes
+    )  # noqa
 
 
 def _create_empty_tensor(ms_type):
@@ -177,6 +209,53 @@ def async_tensor_h2d(
     return t
 
 
+STR_DTYPE_TO_TENSOR_DTYPE = {
+    "half": torch.half,
+    "float16": torch.half,
+    "bfloat16": torch.bfloat16,
+    "float": torch.float,
+    "fp8": torch.uint8,
+    "fp8_e4m3": torch.uint8,
+    "fp8_e5m2": torch.uint8,
+}
+
+
 def get_dtype_size(dtype: torch.dtype) -> int:
     """Get the size of the data type in bytes."""
+    if isinstance(dtype, str):
+        dtype = STR_DTYPE_TO_TENSOR_DTYPE[dtype]
     return torch.tensor([1], dtype=dtype).itemsize
+
+
+def _parse_visible_ascend_device() -> List[str]:
+    visible_device_str = os.environ.get("ASCEND_RT_VISIBLE_DEVICES", None)
+    if visible_device_str:
+        try:
+            res = visible_device_str.split(",")
+        except Exception as e:
+            logger.warning(
+                'Error argument(%s) of environ "ASCEND_RT_VISIBLE_DEVICES"'
+                % visible_device_str
+            )
+
+        return res
+
+    import re
+    import subprocess
+
+    output = subprocess.check_output(["npu-smi", "info"], encoding="utf-8")
+    res = re.findall(
+        r"\|\s+(\d+)\s+\w+\s+\|\s+OK\s+\|\s+[0-9\.]+\s+[0-9\.]+\s+\d+\s+\/\s+\d+\s+\|",
+        output,
+    )
+    return res
+
+
+def ascend_device_count_stateless() -> int:
+    visible_devices = _parse_visible_ascend_device()
+    return len(visible_devices)
+
+
+def ascend_is_initialized():
+    # Just return true for check.
+    return True

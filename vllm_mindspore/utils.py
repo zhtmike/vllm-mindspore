@@ -57,6 +57,12 @@ STR_DTYPE_TO_MS_DTYPE = {
 }
 
 
+def get_valid_dtype(dtype):
+    if isinstance(dtype, str):
+        dtype = STR_DTYPE_TO_MS_DTYPE[dtype]
+    return dtype
+
+
 def direct_register_custom_op(
     op_name: str,
     op_func: Callable,

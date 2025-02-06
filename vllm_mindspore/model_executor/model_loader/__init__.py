@@ -177,35 +177,3 @@ class MsModelLoader(BaseModelLoader):
                     with device_loading_context(module, target_device):
                         quant_method.process_weights_after_loading(module)
         return model.eval()
-
-
-def get_ms_model_loader(load_config: LoadConfig) -> BaseModelLoader:
-    """Get a model loader based on the load format."""
-
-    if isinstance(load_config.load_format, type):
-        return load_config.load_format(load_config)
-
-    if load_config.load_format == LoadFormat.DUMMY:
-        raise RuntimeError("Donot support for mindspore model now!")
-
-    if load_config.load_format == LoadFormat.TENSORIZER:
-        raise RuntimeError("Donot support for mindspore model now!")
-
-    if load_config.load_format == LoadFormat.SHARDED_STATE:
-        raise RuntimeError("Donot support for mindspore model now!")
-
-    if load_config.load_format == LoadFormat.BITSANDBYTES:
-        raise RuntimeError("Donot support for mindspore model now!")
-
-    if load_config.load_format == LoadFormat.GGUF:
-        raise RuntimeError("Donot support for mindspore model now!")
-
-    if load_config.load_format == LoadFormat.RUNAI_STREAMER:
-        raise RuntimeError("Donot support for mindspore model now!")
-
-    return MsModelLoader(load_config)
-
-
-def get_ms_model(*, vllm_config: VllmConfig) -> nn.Module:
-    loader = get_ms_model_loader(vllm_config.load_config)
-    return loader.load_model(vllm_config=vllm_config)

@@ -19,7 +19,7 @@ from typing import List, Tuple
 
 from vllm.sequence import IntermediateTensors
 
-from vllm_mindspore.utils import STR_DTYPE_TO_MS_DTYPE
+from vllm_mindspore.utils import get_valid_dtype
 
 import mindspore as ms
 from mindspore import mint
@@ -109,8 +109,7 @@ def make_empty_intermediate_tensors_factory(keys: List[str], hidden_size: int):
         dtype,
         device,
     ) -> IntermediateTensors:
-        if isinstance(dtype, str):
-            dtype = STR_DTYPE_TO_MS_DTYPE[dtype]
+        dtype = get_valid_dtype(dtype)
         return IntermediateTensors(
             {key: mint.zeros((batch_size, hidden_size), dtype=dtype) for key in keys}
         )

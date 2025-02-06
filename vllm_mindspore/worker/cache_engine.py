@@ -22,18 +22,14 @@ from vllm.logger import init_logger
 
 logger = init_logger(__name__)
 
-from vllm_mindspore.utils import MsKVCache, STR_DTYPE_TO_MS_DTYPE
+from vllm_mindspore.utils import MsKVCache, get_valid_dtype
 
 import mindspore as ms
-from mindspore.common.initializer import Zero
 
 
 def create_block(shape, dtype, name=None, device=None):
-    # from mindspore.ops.function.array_func import empty as empty_tensor
-    # blocks = empty_tensor(shape, dtype=dtype, device=device)
-    blocks = ms.Parameter(
-        ms.Tensor(shape=shape, dtype=dtype, init=Zero()), name=name, requires_grad=False
-    )
+    from mindspore.ops.function.array_func import empty as empty_tensor
+    blocks = empty_tensor(*shape, dtype=dtype, device=device)
     return blocks
 
 
@@ -48,8 +44,7 @@ def ms_allocate_kv_cache(
     )
     kv_cache: List[MsKVCache] = []
 
-    if isinstance(self.dtype, str):
-        self.dtype = STR_DTYPE_TO_MS_DTYPE[self.dtype]
+    self.dtype = get_valid_dtype(self.dtype)
 
     # TODO(tronzhang): A shape with (2, ...) for a kv tensor cannot support in mindspore's tensor and block operation, so split it to two tensor.
     for _ in range(self.num_attention_layers):

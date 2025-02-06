@@ -1,11 +1,12 @@
-From b8fe0b4c335669f5cd19a63f405e2f0941fd5066 Mon Sep 17 00:00:00 2001
+From 146c484085bd89cb38e14a12d44b2d29dbd923ff Mon Sep 17 00:00:00 2001
 From: tronzhang <zhangzhaochuang@huawei.com>
 Date: Fri, 24 Jan 2025 14:24:42 +0800
 Subject: [PATCH] modify for vllm_mindspore
 
 ---
  mindtorch/torch/_C/_distributed_c10d.py       |  1 +
- mindtorch/torch/__init__.py                   | 35 +++++++++-
+ mindtorch/torch/__init__.py                   | 14 +++-
+ mindtorch/torch/_device.py                    | 23 +++++++
  mindtorch/torch/_dynamo/__init__.py           |  1 +
  mindtorch/torch/_dynamo/config.py             |  2 +
  mindtorch/torch/_inductor/__init__.py         |  1 +
@@ -25,8 +26,9 @@ Subject: [PATCH] modify for vllm_mindspore
  mindtorch/torch/nn/parameter.py               |  4 ++
  mindtorch/torch/ops/__init__.py               | 24 ++++++-
  mindtorch/torch/types.py                      |  4 ++
- 21 files changed, 297 insertions(+), 11 deletions(-)
+ 22 files changed, 297 insertions(+), 13 deletions(-)
  create mode 100644 mindtorch/torch/_C/_distributed_c10d.py
+ create mode 100644 mindtorch/torch/_device.py
  create mode 100644 mindtorch/torch/_dynamo/__init__.py
  create mode 100644 mindtorch/torch/_dynamo/config.py
  create mode 100644 mindtorch/torch/_inductor/__init__.py
@@ -44,44 +46,21 @@ index 0000000..fa0b828
 @@ -0,0 +1 @@
 +from torch.distributed import Store, TCPStore
 diff --git a/mindtorch/torch/__init__.py b/mindtorch/torch/__init__.py
-index 39f90a9..c57ff0b 100644
+index 39f90a9..546e066 100644
 --- a/mindtorch/torch/__init__.py
 +++ b/mindtorch/torch/__init__.py
-@@ -55,9 +55,32 @@ dtype = Type
+@@ -55,9 +55,7 @@ dtype = Type
  inf = float("inf")
  nan = float("nan")
  
-+
- class device:
-     def __init__(self, name):
+-class device:
+-    def __init__(self, name):
 -        pass
-+        if isinstance(name, device):
-+            if hasattr(name, "type"):
-+                self.type = name.type
-+            
-+            if hasattr(name, "index"):
-+                self.index = name.index
-+            
-+            return
-+        
-+        names = name.split(":")
-+        if len(names) == 1:
-+            self.type = names[0]
-+        elif len(names) == 2:
-+            self.type = names[0]
-+            import builtins
-+            self.index = builtins.int(names[1])
-+        else:
-+            raise ValueError("Invalid device arguments: %s!" % str(name))
-+
-+    def __enter__(self): ...
-+
-+    def __exit__(self, type, value, traceback): ...
-+
++from ._device import device
  
  from ._C.size import Size
  
-@@ -71,6 +94,7 @@ from . import optim, ops, nn, distributions, cuda, distributed#, multiprocessing
+@@ -71,6 +69,7 @@ from . import optim, ops, nn, distributions, cuda, distributed#, multiprocessing
  from .autograd import no_grad, enable_grad, value_and_grad, inference_mode
  from ._bind import get_default_dtype, set_default_dtype
  from . import profiler
@@ -89,7 +68,7 @@ index 39f90a9..c57ff0b 100644
  
  BoolTensor = Tensor
  FloatTensor = Tensor
-@@ -121,4 +145,13 @@ def compile(fn=None, *args, **kwargs):
+@@ -121,4 +120,13 @@ def compile(fn=None, *args, **kwargs):
          return wrap_func(fn)
      return wrap_func
  
@@ -103,6 +82,35 @@ index 39f90a9..c57ff0b 100644
 +
 +
  __version__ = "2.5"
+diff --git a/mindtorch/torch/_device.py b/mindtorch/torch/_device.py
+new file mode 100644
+index 0000000..9e7f2b6
+--- /dev/null
++++ b/mindtorch/torch/_device.py
+@@ -0,0 +1,23 @@
++class device:
++    def __init__(self, name):
++        if isinstance(name, device):
++            if hasattr(name, "type"):
++                self.type = name.type
++
++            if hasattr(name, "index"):
++                self.index = name.index
++
++            return
++
++        names = name.split(":")
++        if len(names) == 1:
++            self.type = names[0]
++        elif len(names) == 2:
++            self.type = names[0]
++            self.index = int(names[1])
++        else:
++            raise ValueError("Invalid device arguments: %s!" % str(name))
++
++    def __enter__(self): ...
++
++    def __exit__(self, type, value, traceback): ...
 diff --git a/mindtorch/torch/_dynamo/__init__.py b/mindtorch/torch/_dynamo/__init__.py
 new file mode 100644
 index 0000000..d63bc18
@@ -133,14 +141,14 @@ index 0000000..afdab53
 @@ -0,0 +1 @@
 +compile_threads = 1
 diff --git a/mindtorch/torch/_tensor.py b/mindtorch/torch/_tensor.py
-index 8541161..00cd4ab 100644
+index 8541161..de5a738 100644
 --- a/mindtorch/torch/_tensor.py
 +++ b/mindtorch/torch/_tensor.py
 @@ -7,6 +7,7 @@ from mindspore._c_expression import Tensor as Tensor_
  from ._utils import _rebuild_tensor_v2
  from ._C.size import Size
  from .ops import transpose, mean, unsqueeze, pow
-+from torch import device
++from ._device import device
  
  MS_PT_DTYPE_MAP = {
      'Float32': 'torch.cuda.FloatTensor',

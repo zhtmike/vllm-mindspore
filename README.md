@@ -5,19 +5,21 @@
 源码安装 vllm_mindspore
 
 1. 安装 mindspore master 分支对应每日包(版本号 >= 2.5.0)
-  > * 依赖的 CANN 和 MindSpore 仍处于开发态未正式发布，可通过 `https://repo.mindspore.cn/mindspore/mindspore/version` 相关地址获取每日构建版本，并安装对应的 CANN 配套环境。
-  > > 
-  > > 1. 通过 `wget https://repo.mindspore.cn/mindspore/mindspore/version/202501/20250125/master_20250125160017_3f1def978242de1dda3ef0544e282b6ef369d165_newest/unified/aarch64/mindspore-2.5.0-cp39-cp39-linux_aarch64.whl` 下载对应的 python 3.9 的 mindspore 包，然后通过 `pip3 install mindspore-2.5.0-cp39-cp39-linux_aarch64.whl` 安装。
-  > > 3. 找到包安装路径下的 `.commit_id` (如: `/your_path/site-packages/mindspore/.commit_id`）, 可获取其对应的代码 commit记录，如:
-  > > ```
-  > > __commit_id__ = '[sha1]:94cf8828,[branch]:(HEAD,origin/master,origin/HEAD,master)'
-  > > ```
-  > > 4. 通过该 commit id 查找源码中对应的 `./.jenkins/task/config/cann_version.txt` 文件即可知配套 CANN 的归档日期，安装对应CANN。
+  > * 依赖的 CANN 和 MindSpore 仍处于开发态未正式发布，可通过 `https://repo.mindspore.cn/mindspore/mindspore/version` 相关地址获取每日构建版本，并安装对应的 CANN 配套环境。（**推荐获取: Milan_C20_20241231 的CANN，和 20250125 的每日 mindspore 包。**）
+  > > 1. 先安装配套依赖的 CANN。安装完后配置其环境变量如下:
   > >   ```
   > >   ASCEND_CUSTOM_PATH=${YOUR_CANN_PATH}
   > >   source ${ASCEND_CUSTOM_PATH}/latest/bin/setenv.bash
   > >   ```
-  > > 5. 验证 mindspore 是否安装正确： `python -c "import mindspore;mindspore.set_context(device_target='Ascend');mindspore.run_check()"`
+  > > 2. 通过 `wget https://repo.mindspore.cn/mindspore/mindspore/version/202501/20250125/master_20250125160017_3f1def978242de1dda3ef0544e282b6ef369d165_newest/unified/aarch64/mindspore-2.5.0-cp39-cp39-linux_aarch64.whl` 下载对应的 python 3.9 的 mindspore 包，然后通过 `pip3 install mindspore-2.5.0-cp39-cp39-linux_aarch64.whl` 安装。
+  > > 3. 验证 mindspore 是否安装正确： `python -c "import mindspore;mindspore.set_context(device_target='Ascend');mindspore.run_check()"`
+  > > > 若遇到CANN不匹配，则可通过如下方法找到对应的CANN:
+  > > > 1. 找到包安装路径下的 `.commit_id` (如: `/your_path/site-packages/mindspore/.commit_id`）, 可获取其对应的代码 commit记录，如:
+  > > >   ```
+  > > >   __commit_id__ = '[sha1]:94cf8828,[branch]:(HEAD,origin/master,origin/HEAD,master)'
+  > > >   ```
+  > > > 2. 通过该 commit id 查找源码中对应的 `./.jenkins/task/config/cann_version.txt` 文件即可知配套 CANN 的归档日期，重新安装对应CANN。
+
 2. 下载源码 `git clone https://gitee.com/mindspore/vllm_mindspore.git`
 3. `cd vllm_mindspore`
 4. (可选) 若当前没有安装 vllm 对应版本，则通过 `bash install_vllm.sh` 进行安装。

@@ -96,11 +96,6 @@ vllm.model_executor.model_loader.loader.get_model_architecture = (
 )
 vllm.model_executor.models.registry._run_in_subprocess = _run_in_subprocess
 
-from vllm_mindspore.model_executor.model_loader import get_ms_model_loader, get_ms_model
-
-vllm.model_executor.model_loader.get_model_loader = get_ms_model_loader
-vllm.model_executor.model_loader.get_model = get_ms_model
-
 from vllm_mindspore.model_executor.sampling_metadata import (
     SequenceGroupToSample,
     SamplingMetadataCache,
@@ -131,11 +126,16 @@ vllm.worker.cache_engine.CacheEngine._allocate_kv_cache = ms_allocate_kv_cache
 vllm.worker.cache_engine.CacheEngine.swap_in = ms_swap_in
 vllm.worker.cache_engine.CacheEngine.swap_out = ms_swap_out
 
-from vllm_mindspore.worker.worker import _warm_up_model, prepare_worker_input
+from vllm_mindspore.model_executor.model_loader import safetensors_weights_iterator
+
+vllm.model_executor.model_loader.loader.safetensors_weights_iterator = (
+    safetensors_weights_iterator
+)
+
+from vllm_mindspore.worker.worker import _warm_up_model
 from vllm.worker.worker import Worker
 
 Worker._warm_up_model = _warm_up_model
-Worker.prepare_worker_input = prepare_worker_input
 
 from vllm_mindspore.worker.model_runner import _get_cuda_graph_pad_size, profile_run
 

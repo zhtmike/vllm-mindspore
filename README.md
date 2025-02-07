@@ -24,7 +24,8 @@
 3. `cd vllm_mindspore`
 4. (可选) 若当前没有安装 vllm 对应版本，则通过 `bash install_vllm.sh` 进行安装。
    > 可以通过 `bash install_vllm.sh develop` 以开发者模式安装。
-5. (当前msadapter带来的限制，后续清除) 卸载 torch `pip3 uninstall torch`
+5. (当前msadapter带来的限制，后续清除) 卸载 torch `pip3 uninstall torch torchvision torch-npu`
+   > 如果是已经下载过代码，且安装过，更新代码后，需要清理下 msadapter，防止补丁加载失败，导致更新内容失效: `rm vllm_mindspore/msadapter -rf; git checkout vllm_mindspore/msadapter`。
 6. 通过 `pip3 install .` 安装 vllm_mindspore。
    > 可以通过 `pip3 install -e .` 以开发者模式安装。
 

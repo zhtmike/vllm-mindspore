@@ -7,7 +7,7 @@
 1. 安装 mindspore master 分支对应每日包(版本号 >= 2.5.0)
   > * 依赖的 CANN 和 MindSpore 仍处于开发态未正式发布，可通过 `https://repo.mindspore.cn/mindspore/mindspore/version` 相关地址获取每日构建版本，并安装对应的 CANN 配套环境。（**推荐获取: Milan_C20_20241231 的CANN，和 20250125 的每日 mindspore 包。**）
   > > 1. 先安装配套依赖的 CANN。安装完后配置其环境变量如下:
-  > >   ```
+  > >   ```shell
   > >   ASCEND_CUSTOM_PATH=${YOUR_CANN_PATH}
   > >   source ${ASCEND_CUSTOM_PATH}/latest/bin/setenv.bash
   > >   ```
@@ -24,7 +24,10 @@
 3. `cd vllm_mindspore`
 4. (可选) 若当前没有安装 vllm 对应版本，则通过 `bash install_vllm.sh` 进行安装。
    > 可以通过 `bash install_vllm.sh develop` 以开发者模式安装。
-5. (当前msadapter带来的限制，后续清除) 卸载 torch `pip3 uninstall torch torchvision torch-npu`
+5. (当前msadapter带来的限制，后续清除) 卸载 torch 相关包 
+   ```shell
+   pip3 uninstall -y `pip list | grep ^torch | awk -F ' ' '{print $1}' | xargs`
+   ```
    > 如果是已经下载过代码，且安装过，更新代码后，需要清理下 msadapter，防止补丁加载失败，导致更新内容失效: `rm vllm_mindspore/msadapter -rf; git checkout vllm_mindspore/msadapter`。
 6. 通过 `pip3 install .` 安装 vllm_mindspore。
    > 可以通过 `pip3 install -e .` 以开发者模式安装。
@@ -43,7 +46,7 @@
    > 如果已经有下载好的模型配置、权重等，将 `meta-llama/Llama-2-7b-hf` 替换为本地的路径即可。
    
 
-   ```
+   ```python
    import vllm_mindspore # Add this line on the top of script.
    from vllm import LLM, SamplingParams
    
@@ -71,7 +74,7 @@
 
    > 由于一些限制，在线下载在特定的服务器上需要通过安装较低版本的 requests 包 `requests-2.27.1`，且需要在脚本最上方添加如下代码:
    > 
-   > ```
+   > ```python
    > import urllib3
    > import os
    > # disable SSL certificate verification
@@ -82,7 +85,7 @@
    > 
    > 这种情况下在线下载的离线脚本如下：
    > 
-   > ```
+   > ```python
    > import urllib3
    > import os
    > # disable SSL certificate verification

@@ -10,6 +10,7 @@
   > >   ```shell
   > >   ASCEND_CUSTOM_PATH=${YOUR_CANN_PATH}
   > >   source ${ASCEND_CUSTOM_PATH}/latest/bin/setenv.bash
+  > >   export ASCEND_HOME_PATH=${ASCEND_CUSTOM_PATH}/latest
   > >   ```
   > > 2. 通过 `wget https://repo.mindspore.cn/mindspore/mindspore/version/202501/20250125/master_20250125160017_3f1def978242de1dda3ef0544e282b6ef369d165_newest/unified/aarch64/mindspore-2.5.0-cp39-cp39-linux_aarch64.whl` 下载对应的 python 3.9 的 mindspore 包，然后通过 `pip3 install mindspore-2.5.0-cp39-cp39-linux_aarch64.whl` 安装。
   > > 3. 验证 mindspore 是否安装正确： `python -c "import mindspore;mindspore.set_context(device_target='Ascend');mindspore.run_check()"`

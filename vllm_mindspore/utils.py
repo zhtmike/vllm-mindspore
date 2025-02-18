@@ -149,19 +149,12 @@ def memory_profiling(
 
     diff = result.after_profile - result.before_profile
     result.torch_peak_increase_in_bytes = diff.torch_peak_in_bytes
+    
+    # For mindspore, the memory is allocated and free in memory pool, so cannot read the current used memory by `torch.cuda.mem_get_info`.
     current_cuda_memory_bytes = result.after_profile.torch_memory_in_bytes
-    result.non_torch_increase_in_bytes = (
-        current_cuda_memory_bytes
-        - baseline_memory_in_bytes
-        - weights_memory_in_bytes
-        - diff.torch_memory_in_bytes
-    )  # noqa
+    result.non_torch_increase_in_bytes = current_cuda_memory_bytes - baseline_memory_in_bytes - weights_memory_in_bytes - diff.torch_memory_in_bytes  # noqa
     result.profile_time = diff.timestamp
-    result.non_kv_cache_memory_in_bytes = (
-        result.non_torch_increase_in_bytes
-        + result.torch_peak_increase_in_bytes
-        + result.weights_memory_in_bytes
-    )  # noqa
+    result.non_kv_cache_memory_in_bytes = result.non_torch_increase_in_bytes + result.torch_peak_increase_in_bytes + result.weights_memory_in_bytes  # noqa
 
 
 def _create_empty_tensor(ms_type):

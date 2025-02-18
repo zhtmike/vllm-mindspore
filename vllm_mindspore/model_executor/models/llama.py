@@ -53,6 +53,7 @@ from vllm_mindspore.model_executor.models.model_base import MsModelBase
 
 from vllm.sequence import IntermediateTensors
 from vllm.attention import AttentionMetadata
+from vllm.model_executor.models.interfaces import SupportsPP
 
 import mindspore as ms
 from mindspore import mint
@@ -432,7 +433,7 @@ class LlamaModel(ms.nn.Cell):
         return loaded_params
 
 
-class LlamaForCausalLM(MsModelBase):
+class LlamaForCausalLM(MsModelBase, SupportsPP):
     def __init__(self, vllm_config, prefix: str = ""):
         super().__init__(vllm_config=vllm_config, prefix=prefix)
 
@@ -475,10 +476,12 @@ class LlamaForCausalLM(MsModelBase):
             self.model.make_empty_intermediate_tensors
         )
 
+        self.set_modules({"model": self.model, "lm_head": self.lm_head})
+
     def tie_lmhead_weights(self):
         self.lm_head = self.lm_head.tie_weights(self.model.embed_tokens)
 
-    def construct(
+    def forward(
         self,
         input_ids,
         positions,
@@ -487,9 +490,6 @@ class LlamaForCausalLM(MsModelBase):
         intermediate_tensors=None,
         inputs_embeds=None,
     ):
-
-        # intermediate_tensors 是PP并行中， 传递过来的上一层网络的输出（hidden_state，residual）。
-        # inputs_embeds 是预先将token_id转换成embedding传进来的， 可以让网络不需要再做一次embedding操作。
         model_output = self.model(
             input_ids,
             positions,
@@ -500,14 +500,8 @@ class LlamaForCausalLM(MsModelBase):
         )
         return model_output
 
-    # 这个接口的定义是vllm定义的， 入参不可改变， 不然vllm会调用不到。
-    # TODO：weights入参当前定义为dict格式， 原生为tuple格式， 待插件上层最终决定。
     def load_weights(self, weights: Iterable[Tuple[str, Tensor]]) -> Set[str]:
-        # weights入参传入为完整的、未切分的权重，需要在该函数中实现切分和加载逻辑。
-        # 这里vllm默认会每个进程加载一个完整的权重， 可能会有内存重复， 可优化。
-
-        # 在这里调用parameters_dict， 是为了能将self.lm_head考虑进去。
-        params_dict = self.parameters_dict()
+        params_dict = self.get_params_dict()
         self.model.load_weights(weights, params_dict)
 
     def sample(

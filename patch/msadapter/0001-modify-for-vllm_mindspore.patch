@@ -1,11 +1,11 @@
-From 146c484085bd89cb38e14a12d44b2d29dbd923ff Mon Sep 17 00:00:00 2001
+From e9f17a51b95c285193ff306b5f84b27e1f768fc5 Mon Sep 17 00:00:00 2001
 From: tronzhang <zhangzhaochuang@huawei.com>
-Date: Fri, 24 Jan 2025 14:24:42 +0800
+Date: Tue, 18 Feb 2025 22:50:36 +0800
 Subject: [PATCH] modify for vllm_mindspore
 
 ---
  mindtorch/torch/_C/_distributed_c10d.py       |  1 +
- mindtorch/torch/__init__.py                   | 14 +++-
+ mindtorch/torch/__init__.py                   | 16 ++++-
  mindtorch/torch/_device.py                    | 23 +++++++
  mindtorch/torch/_dynamo/__init__.py           |  1 +
  mindtorch/torch/_dynamo/config.py             |  2 +
@@ -20,13 +20,15 @@ Subject: [PATCH] modify for vllm_mindspore
  .../torch/distributed/distributed_c10d.py     | 69 ++++++++++++++++++-
  mindtorch/torch/distributed/scheduler_init.py | 58 ++++++++++++++++
  mindtorch/torch/func.py                       | 16 +++++
+ mindtorch/torch/functional.py                 | 27 ++++++++
  mindtorch/torch/fx.py                         |  1 +
  mindtorch/torch/library.py                    |  5 ++
  mindtorch/torch/nn/__init__.py                |  2 +-
  mindtorch/torch/nn/parameter.py               |  4 ++
  mindtorch/torch/ops/__init__.py               | 24 ++++++-
+ mindtorch/torch/ops/creation.py               | 12 +++-
  mindtorch/torch/types.py                      |  4 ++
- 22 files changed, 297 insertions(+), 13 deletions(-)
+ 24 files changed, 335 insertions(+), 16 deletions(-)
  create mode 100644 mindtorch/torch/_C/_distributed_c10d.py
  create mode 100644 mindtorch/torch/_device.py
  create mode 100644 mindtorch/torch/_dynamo/__init__.py
@@ -35,6 +37,7 @@ Subject: [PATCH] modify for vllm_mindspore
  create mode 100644 mindtorch/torch/_inductor/config.py
  create mode 100644 mindtorch/torch/distributed/scheduler_init.py
  create mode 100644 mindtorch/torch/func.py
+ create mode 100644 mindtorch/torch/functional.py
  create mode 100644 mindtorch/torch/fx.py
  create mode 100644 mindtorch/torch/library.py
 
@@ -46,7 +49,7 @@ index 0000000..fa0b828
 @@ -0,0 +1 @@
 +from torch.distributed import Store, TCPStore
 diff --git a/mindtorch/torch/__init__.py b/mindtorch/torch/__init__.py
-index 39f90a9..546e066 100644
+index 39f90a9..e6562a7 100644
 --- a/mindtorch/torch/__init__.py
 +++ b/mindtorch/torch/__init__.py
 @@ -55,9 +55,7 @@ dtype = Type
@@ -68,7 +71,7 @@ index 39f90a9..546e066 100644
  
  BoolTensor = Tensor
  FloatTensor = Tensor
-@@ -121,4 +120,13 @@ def compile(fn=None, *args, **kwargs):
+@@ -121,4 +120,15 @@ def compile(fn=None, *args, **kwargs):
          return wrap_func(fn)
      return wrap_func
  
@@ -80,6 +83,8 @@ index 39f90a9..546e066 100644
 +def set_num_threads(thread_num):
 +    pass
 +
++
++from .functional import frombuffer
 +
  __version__ = "2.5"
 diff --git a/mindtorch/torch/_device.py b/mindtorch/torch/_device.py
@@ -319,7 +324,7 @@ index 7f5a20a..33f081d 100644
 +    @property
 +    def port(self) -> int: ...
 diff --git a/mindtorch/torch/distributed/distributed_c10d.py b/mindtorch/torch/distributed/distributed_c10d.py
-index 1044ef5..a1d21ff 100644
+index 1044ef5..7b7304c 100644
 --- a/mindtorch/torch/distributed/distributed_c10d.py
 +++ b/mindtorch/torch/distributed/distributed_c10d.py
 @@ -10,6 +10,7 @@ import itertools
@@ -428,7 +433,7 @@ index 1044ef5..a1d21ff 100644
      multiple overlaping process groups. To avoid that, make sure all ranks follow the
      same global creation order.
      """
-+    # TODO(tronzhang): "gloo" cpu not support...
++    # TODO(tronzhang): "gloo" cpu not support, some ops is lost...
 +    backend = "hccl"
      return _new_group_with_tag(
          ranks,
@@ -519,6 +524,39 @@ index 0000000..fec0fa0
 +    strict: bool = False
 +):
 +    return module(*args, **kwargs)
+diff --git a/mindtorch/torch/functional.py b/mindtorch/torch/functional.py
+new file mode 100644
+index 0000000..98df011
+--- /dev/null
++++ b/mindtorch/torch/functional.py
+@@ -0,0 +1,27 @@
++import mindspore as ms
++import numpy as np
++
++from ml_dtypes import bfloat16 as np_bfloat16
++
++_TypeDict = {
++    ms.float16: np.float16,
++    ms.float32: np.float32,
++    ms.float64: np.float64,
++    ms.bfloat16: np_bfloat16,
++    ms.int8: np.int8,
++    ms.int16: np.int16,
++    ms.int32: np.int32,
++    ms.int64: np.int64,
++    ms.uint8: np.uint8,
++    ms.bool_: np.bool_,
++    ms.complex64: np.complex64,
++    ms.complex128: np.complex128,
++}
++
++
++def frombuffer(buffer, *, dtype=None, count=-1, offset=0, requires_grad=False):
++    np_dtype = _TypeDict[dtype]
++    output = np.frombuffer(buffer=buffer, dtype=np_dtype, count=count, offset=offset)
++    if dtype == ms.bfloat16:
++        return ms.Tensor(output.astype(np.float32), dtype=dtype)
++    return ms.Tensor(output, dtype=dtype)
 diff --git a/mindtorch/torch/fx.py b/mindtorch/torch/fx.py
 new file mode 100644
 index 0000000..a635c1a
@@ -599,6 +637,29 @@ index c07a22d..8bc495d 100644
  __all__ = []
  __all__.extend(_inner.__all__)
  __all__.extend(array.__all__)
+diff --git a/mindtorch/torch/ops/creation.py b/mindtorch/torch/ops/creation.py
+index 6e480fc..0d868bb 100644
+--- a/mindtorch/torch/ops/creation.py
++++ b/mindtorch/torch/ops/creation.py
+@@ -119,9 +119,15 @@ def empty(*size, dtype=None, device=None, requires_grad=False):
+         size = size[0]
+     if dtype is None:
+         dtype = get_default_dtype()
+-    if device and device.lower() == 'cpu':
+-        device = device.upper()
+-    out = mindspore.mint.empty(size, dtype=dtype, device=device)
++
++    if device:
++        if not isinstance(device, str) and hasattr(device, "type"):
++            device = device.type
++        if device.lower() == 'cpu':
++            device = device.upper()
++    
++    # To avoid the problem in irecv and recv of using empty.
++    out = mindspore.tensor(np.zeros(size), dtype=dtype)
+     if requires_grad:
+         out.requires_grad = True
+     return out
 diff --git a/mindtorch/torch/types.py b/mindtorch/torch/types.py
 index e69de29..9616328 100644
 --- a/mindtorch/torch/types.py

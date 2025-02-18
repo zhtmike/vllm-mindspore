@@ -15,33 +15,11 @@
 # limitations under the License.
 # ============================================================================
 """Worker functions"""
-from typing import Tuple
-
-import torch
-
-from vllm.sequence import ExecuteModelRequest
-from vllm.worker.worker_base import WorkerInput
-
-from typing import Tuple
-
-from vllm.model_executor import set_random_seed
-from vllm.logger import init_logger
-
-from vllm_mindspore.utils import _create_empty_tensor
-
-logger = init_logger(__name__)
 
 
 def _warm_up_model(self) -> None:
     # Reset the seed to ensure that the random state is not affected by
     # the model initialization and profiling.
+    from vllm.model_executor import set_random_seed
+
     set_random_seed(self.model_config.seed)
-
-
-def determine_num_available_blocks(self) -> Tuple[int, int]:
-    logger.warning(
-        "Cannot get right device memory info, just return here for mindspore!!!!!!!!!!!!"
-    )
-    # TODO(tronzhang): use env latter...
-    return 256, 512
-

@@ -74,6 +74,8 @@ def get_requirements() -> List[str]:
                 resolved_requirements += _read_requirements(line.split()[1])
             elif line.startswith("--"):
                 continue
+            elif "http" in line:
+                continue
             else:
                 resolved_requirements.append(line)
         return resolved_requirements
@@ -94,20 +96,17 @@ def prepare_submodules() -> None:
     old_dir = os.getcwd()
     os.chdir(ROOT_DIR)
 
-    msadapter_path = Path() / "vllm_mindspore" / "msadapter"
-    if not any(msadapter_path.iterdir()):
-        # Fetch source codes.
-        _run_cmd("git submodule update --init vllm_mindspore/msadapter", check=False)
-        os.chdir(get_path("vllm_mindspore", "msadapter"))
-        _run_cmd("git reset --hard HEAD")
+    _run_cmd("rm -rf vllm_mindspore/msadapter")
+    _run_cmd("git submodule update --init vllm_mindspore/msadapter", check=False)
+    os.chdir(get_path("vllm_mindspore", "msadapter"))
 
-        patch_dir = Path(ROOT_DIR) / "patch" / "msadapter"
-        for p in patch_dir.glob("*.patch"):
-            _run_cmd("git apply {}".format(p))
+    patch_dir = Path(ROOT_DIR) / "patch" / "msadapter"
+    for p in patch_dir.glob("*.patch"):
+        _run_cmd("git apply {}".format(p))
 
-        # Add __init__.py for packing.
-        _run_cmd("touch __init__.py")
-        _run_cmd("touch mindtorch/__init__.py")
+    # Add __init__.py for packing.
+    _run_cmd("touch __init__.py")
+    _run_cmd("touch mindtorch/__init__.py")
 
     os.chdir(old_dir)
 

@@ -16,7 +16,7 @@
 # ============================================================================
 
 from abc import abstractmethod
-from typing import Iterable, List, Optional, Set, Tuple, Union
+from typing import Iterable, List, Optional, Set, Tuple, Union, Dict
 
 from vllm.attention import AttentionMetadata
 from vllm.config import VllmConfig
@@ -28,7 +28,7 @@ import mindspore
 from mindspore import Tensor
 
 
-class MsModelBase(mindspore.nn.Cell):
+class MsModelBase:
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
         super(MsModelBase, self).__init__()
         config = vllm_config.model_config.hf_config
@@ -37,18 +37,78 @@ class MsModelBase(mindspore.nn.Cell):
         self.config = config
         self.lora_config = lora_config
 
+        self.modules_dict = None
+
+    def set_modules(self, model_dicts: Dict[str, mindspore.nn.Cell]):
+        self.modules_dict = model_dicts
+
+    def _check_modules_valid(self):
+        if self.modules_dict is None:
+            raise RuntimeError("Should set modules firstly!")
+
     def named_parameters(self):
-        return self.parameters_and_names()
+        self._check_modules_valid()
+
+        for cell_name, module in self.modules_dict.items():
+            for par_name, par in module.parameters_and_names():
+                if cell_name != "self":
+                    par_name = cell_name + "." + par_name
+
+                yield par_name, par
+
+    def get_params_dict(self):
+        self._check_modules_valid()
+
+        params_dict = dict()
+        for name, module in self.modules_dict.items():
+            module_params = module.parameters_dict()
+            if name != "self":
+                new_module_params = dict()
+                for param_name, param in module_params.items():
+                    new_module_params[name + "." + param_name] = param
+                module_params = new_module_params
+            params_dict.update(module_params)
+
+        return params_dict
 
     def named_modules(self):
-        return self.cells_and_names()
+        self._check_modules_valid()
+
+        res_modules = set()
+        for name, module in self.modules_dict.items():
+            for module_name, sub_module in module.cells_and_names():
+                if name != "self":
+                    module_name = name + "." + module_name
+                yield module_name, sub_module
 
     def get_submodule(self):
         raise RuntimeError("Cannot get submodule for mindspore model now!")
 
     def eval(self):
-        self.set_train(False)
+        self._check_modules_valid()
+
+        for _, module in self.modules_dict.items():
+            module.set_train(False)
+
         return self
+
+    def __call__(
+        self,
+        input_ids: Tensor,
+        positions: Tensor,
+        kv_caches: List[Tensor],
+        attn_metadata: AttentionMetadata,
+        intermediate_tensors: Optional[IntermediateTensors] = None,
+        inputs_embeds: Optional[Tensor] = None,
+    ) -> Union[Tensor, IntermediateTensors]:
+        return self.forward(
+            input_ids,
+            positions,
+            kv_caches,
+            attn_metadata,
+            intermediate_tensors,
+            inputs_embeds,
+        )
 
     def forward(
         self,
@@ -59,14 +119,7 @@ class MsModelBase(mindspore.nn.Cell):
         intermediate_tensors: Optional[IntermediateTensors] = None,
         inputs_embeds: Optional[Tensor] = None,
     ) -> Union[Tensor, IntermediateTensors]:
-        raise self.__call__(
-            input_ids,
-            positions,
-            kv_caches,
-            attn_metadata,
-            intermediate_tensors,
-            inputs_embeds,
-        )
+        raise NotImplementedError("Function forward should be Implemented!")
 
     @abstractmethod
     def compute_logits(

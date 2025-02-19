@@ -1,2 +1,3 @@
 setuptools_scm
+ml_dtypes
 mindspore >= 2.5.0

@@ -15,24 +15,13 @@
 # limitations under the License.
 # ============================================================================
 
-import contextlib
 from typing import Tuple, Type
 
-import torch
 from torch import nn
 
 from vllm.config import ModelConfig
 
 from vllm_mindspore.model_executor.models.registry import MindSporeModelRegistry
-
-
-@contextlib.contextmanager
-def set_default_torch_dtype(dtype: torch.dtype):
-    """Sets the default torch dtype to the given dtype."""
-    old_dtype = torch.get_default_dtype()
-    torch.set_default_dtype(dtype)
-    yield
-    torch.set_default_dtype(old_dtype)
 
 
 def get_ms_model_architecture(model_config: ModelConfig) -> Tuple[Type[nn.Module], str]:

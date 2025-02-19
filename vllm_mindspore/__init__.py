@@ -86,6 +86,7 @@ vllm.model_executor.models.ModelRegistry = MindSporeModelRegistry
 vllm.config.ModelRegistry = MindSporeModelRegistry
 
 from vllm_mindspore.model_executor.model_loader.utils import get_ms_model_architecture
+from vllm.model_executor.model_loader import get_model_architecture
 
 vllm.model_executor.model_loader.get_model_architecture = get_ms_model_architecture
 vllm.model_executor.model_loader.utils.get_model_architecture = (
@@ -126,7 +127,9 @@ vllm.worker.cache_engine.CacheEngine._allocate_kv_cache = ms_allocate_kv_cache
 vllm.worker.cache_engine.CacheEngine.swap_in = ms_swap_in
 vllm.worker.cache_engine.CacheEngine.swap_out = ms_swap_out
 
-from vllm_mindspore.model_executor.model_loader import safetensors_weights_iterator
+from vllm_mindspore.model_executor.model_loader.weight_utils import (
+    safetensors_weights_iterator,
+)
 
 vllm.model_executor.model_loader.loader.safetensors_weights_iterator = (
     safetensors_weights_iterator
@@ -146,14 +149,12 @@ vllm.worker.model_runner.GPUModelRunnerBase.profile_run = profile_run
 
 from vllm_mindspore.distributed.parallel_state import (
     all_reduce_for_GroupCoordinator,
-    init_for_GroupCoordinator,
     init_model_parallel_group,
 )
 
 vllm.distributed.parallel_state.GroupCoordinator.all_reduce = (
     all_reduce_for_GroupCoordinator
 )
-vllm.distributed.parallel_state.GroupCoordinator.__init__ = init_for_GroupCoordinator
 vllm.distributed.parallel_state.init_model_parallel_group = init_model_parallel_group
 
 from vllm_mindspore.executor.multiproc_worker_utils import (

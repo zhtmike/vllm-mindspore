@@ -115,7 +115,7 @@ def prepare_submodules() -> None:
 prepare_submodules()
 
 setup(
-    name="vllm_mindspore",
+    name="vllm-mindspore",
     use_scm_version=True,
     setup_requires=["setuptools_scm"],
     author="MindSpore Team",

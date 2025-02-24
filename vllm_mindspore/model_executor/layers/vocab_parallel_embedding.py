@@ -17,25 +17,21 @@
 
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
-import mindspore as ms
-from mindspore import Tensor
-import mindspore.mint.nn.functional as F
-from mindspore import mint
-from mindspore import Parameter
-import numpy as np
 
-# 需要有一个基于mindspore的并行基类， 可以查询rank ，world_size 的信息。
-from vllm.distributed import (
-    divide,
-    get_tensor_model_parallel_rank,
-    get_tensor_model_parallel_world_size,
-    tensor_model_parallel_all_reduce,
-)
+from mindspore import Parameter, Tensor, mint, nn, ops
+from mindspore.common import dtype as mstype
+from mindspore.common.dtype import typing
+from vllm.distributed import (divide, get_tensor_model_parallel_rank,
+                              get_tensor_model_parallel_world_size,
+                              tensor_model_parallel_all_reduce,)
+from vllm.model_executor.layers.quantization.base_config import (
+    QuantizationConfig)
+
 from vllm_mindspore.model_executor.layers.quantization.base_config import (
-    QuantizeMethodBase,
-    method_has_implemented_embedding,
-)
+    QuantizeMethodBase, method_has_implemented_embedding)
 from vllm_mindspore.model_executor.utils import set_weight_attrs
+from vllm_mindspore.distributed.communication_op import ReduceFromModelParallelRegion
+from mindspore import jit
 
 DEFAULT_VOCAB_PADDING_SIZE = 64
 
@@ -45,35 +41,41 @@ DEFAULT_VOCAB_PADDING_SIZE = 64
 class UnquantizedEmbeddingMethod(QuantizeMethodBase):
     """Unquantized method for embeddings."""
 
-    def create_weights(
-        self,
-        layer,
-        input_size_per_partition: int,
-        output_partition_sizes: List[int],
-        input_size: int,
-        output_size: int,
-        params_dtype,
-        **extra_weight_attrs,
-    ):
+    def create_weights(self, layer: nn.Cell,
+                       input_size_per_partition: int,
+                       output_partition_sizes: List[int], input_size: int,
+                       output_size: int, params_dtype,
+                       **extra_weight_attrs):
         """Create weights for embedding layer."""
-        weight = Parameter(
-            np.zeros(
-                (sum(output_partition_sizes), input_size_per_partition),
-                dtype=params_dtype,
-            ),
-            requires_grad=False,
-        )
+        weight = Parameter(mint.zeros((sum(output_partition_sizes),
+                                       input_size_per_partition),
+                                      dtype=params_dtype),
+                           requires_grad=False)
         set_weight_attrs(weight, {"input_dim": 1, "output_dim": 0})
-        # layer.register_parameter("weight", weight)
         layer.insert_param_to_cell("weight", weight)
-
         set_weight_attrs(weight, extra_weight_attrs)
 
-    def apply(self, layer, x, bias=None):
-        return F.linear(x, layer.weight, bias)
+        self.input_size_per_partition = int(input_size_per_partition)
+        self.output_size_per_partition = int(sum(output_partition_sizes))
+        self.matmul = ops.MatMul(transpose_b=True)
+        self.gather = ops.Gather()
+        self.bias_add = ops.Add()
 
-    def embedding(self, layer, input_):
-        return F.embedding(input_, layer.weight)
+    def apply(self,
+              layer: nn.Cell,
+              x: Tensor,
+              bias: Optional[Tensor] = None) -> Tensor:
+        output_shape = x.shape[:-1] + (self.output_size_per_partition,)
+        x = x.reshape(-1, self.input_size_per_partition)
+        x = self.matmul(x, layer.weight)
+        if bias is not None:
+            x = self.bias_add(x, bias)
+        x = x.reshape(output_shape)
+        return x
+
+    def embedding(self, layer: nn.Cell,
+                  input_: Tensor) -> Tensor:
+        return self.gather(layer.weight, input_, 0)
 
 
 def get_masked_input_and_mask(
@@ -84,29 +86,22 @@ def get_masked_input_and_mask(
     added_vocab_start_index: int,
     added_vocab_end_index: int,
 ) -> Tuple[Tensor, Tensor]:
-    # torch.compile will fuse all of the pointwise ops below
-    # into a single kernel, making it very fast
-    # org_vocab_mask = (input_ >= org_vocab_start_index) & (input_ <
-    #                                                       org_vocab_end_index)
-    org_vocab_mask = mint.logical_and(
-        input_ >= org_vocab_start_index, input_ < org_vocab_end_index
-    )
-    # added_vocab_mask = (input_ >= added_vocab_start_index) & (
-    #     input_ < added_vocab_end_index)
-    added_vocab_mask = mint.logical_and(
-        input_ >= added_vocab_start_index, input_ < added_vocab_end_index
-    )
-    added_offset = (
-        added_vocab_start_index
-        - (org_vocab_end_index - org_vocab_start_index)
-        - num_org_vocab_padding
-    )
-    valid_offset = (org_vocab_start_index * org_vocab_mask) + (
-        added_offset * added_vocab_mask
-    )
+    displaced_x = mint.sub(input_, org_vocab_start_index)
+    down_truncated_x = mint.nn.functional.relu(displaced_x)
+    truncated_x = mint.minimum(down_truncated_x, org_vocab_end_index)
+    org_vocab_mask = mint.eq(displaced_x, truncated_x)
+
+    displaced_x = mint.sub(input_, added_vocab_start_index)
+    down_truncated_x = mint.nn.functional.relu(displaced_x)
+    truncated_x = mint.minimum(down_truncated_x, added_vocab_end_index)
+    added_vocab_mask = mint.eq(displaced_x, truncated_x)
+    added_offset = added_vocab_start_index - (
+        org_vocab_end_index - org_vocab_start_index) - num_org_vocab_padding
+    valid_offset = (org_vocab_start_index *
+                    org_vocab_mask) + (added_offset * added_vocab_mask)
     vocab_mask = mint.logical_or(org_vocab_mask, added_vocab_mask)
     input_ = vocab_mask * (input_ - valid_offset)
-    return input_, ~vocab_mask
+    return input_, vocab_mask.expand_dims(-1)
 
 
 def pad_vocab_size(vocab_size: int, pad_to: int = DEFAULT_VOCAB_PADDING_SIZE) -> int:
@@ -190,21 +185,21 @@ class VocabParallelEmbeddingShardIndices:
         assert self.num_added_elements <= self.num_added_elements_padded
 
 
-class VocabParallelEmbedding(ms.nn.Cell):
+class VocabParallelEmbedding(nn.Cell):
     def __init__(
         self,
         num_embeddings: int,
         embedding_dim: int,
-        params_dtype=None,
+        params_dtype: Optional[typing.Type] = None,
         org_num_embeddings: Optional[int] = None,
         padding_size: int = DEFAULT_VOCAB_PADDING_SIZE,
-        quant_config=None,
+        quant_config: Optional[QuantizationConfig] = None,
         prefix: str = "",
     ):
         super().__init__()
         # Keep the input dimensions.
-        tp_rank = get_tensor_model_parallel_rank()  #  获取tp并行的rank
-        self.tp_size = get_tensor_model_parallel_world_size()  #  获取tp并行的world_size
+        tp_rank = get_tensor_model_parallel_rank()  # 获取tp并行的rank
+        self.tp_size = get_tensor_model_parallel_world_size()  # 获取tp并行的world_size
         self.num_embeddings = num_embeddings
         self.padding_size = padding_size
         self.org_vocab_size = org_num_embeddings or num_embeddings
@@ -250,11 +245,7 @@ class VocabParallelEmbedding(ms.nn.Cell):
         self.linear_method: QuantizeMethodBase = linear_method
 
         if params_dtype is None:
-            # params_dtype = torch.get_default_dtype()
-            # TODO:
-            import numpy as np
-
-            params_dtype = np.float16
+            params_dtype = mstype.float16
         # Divide the weight matrix along the vocaburaly dimension.
         self.num_added_embeddings = self.num_embeddings - self.org_vocab_size
         self.num_embeddings_per_partition = divide(
@@ -281,6 +272,7 @@ class VocabParallelEmbedding(ms.nn.Cell):
             params_dtype=params_dtype,
             weight_loader=self.weight_loader,
         )
+        self.tensor_model_parallel_all_reduce = ReduceFromModelParallelRegion()
 
     @classmethod
     def _get_indices(
@@ -320,6 +312,7 @@ class VocabParallelEmbedding(ms.nn.Cell):
             added_vocab_end_index,
         )
 
+    @jit
     def construct(self, input_):
         if self.tp_size > 1:
             # Build the mask.
@@ -329,81 +322,45 @@ class VocabParallelEmbedding(ms.nn.Cell):
                 self.shard_indices.org_vocab_end_index,
                 self.shard_indices.num_org_vocab_padding,
                 self.shard_indices.added_vocab_start_index,
-                self.shard_indices.added_vocab_end_index,
+                self.shard_indices.added_vocab_end_index
             )
         else:
-            masked_input = input_
+            masked_input, input_mask = input_, None
         # Get the embeddings.
-        output_parallel = self.linear_method.embedding(self, masked_input.long())
+        output_parallel = self.linear_method.embedding(self, masked_input)
         # Mask the output embedding.
         if self.tp_size > 1:
-            # output_parallel.masked_fill_(input_mask.unsqueeze(-1), 0)
-            output_parallel = output_parallel.masked_fill(input_mask.unsqueeze(-1), 0)
+            output_parallel = mint.mul(output_parallel, input_mask)
         # Reduce across all the model parallel GPUs.
-        output = tensor_model_parallel_all_reduce(output_parallel)  # 使用并行接口
+        output = self.tensor_model_parallel_all_reduce(output_parallel)
         return output
 
-    def weight_loader(self, param, loaded_weight):
+    def weight_loader(self, param: Parameter, loaded_weight: Tensor):
         output_dim = getattr(param, "output_dim", None)
-        packed_dim = getattr(param, "packed_dim", None)
-
-        # If the parameter is a gguf weight, then load it directly.
-        # if getattr(param, "is_gguf_weight_type", None):
-        #     param.data.copy_(loaded_weight)
-        #     param.weight_type = loaded_weight.item()
-        #     return
-        # elif isinstance(param, UninitializedParameter):
-        #     shape = list(loaded_weight.shape)
-        #     if output_dim is not None:
-        #         shape[output_dim] = shape[output_dim] // self.tp_size
-        #     param.materialize(tuple(shape), dtype=loaded_weight.dtype)
 
         # If parameter does not have output dim, then it should
         # be copied onto all gpus (e.g. g_idx for act_order gptq).
         if output_dim is None:
             assert param.data.shape == loaded_weight.shape
-            # param.data.copy_(loaded_weight)
+            if param.data.shape != loaded_weight.shape:
+                raise ValueError(
+                    f"'param.data.shape' should be equal to 'loaded_weight.shape',"
+                    f" but got {param.data.shape} and {loaded_weight.shape}")
             param.set_data(loaded_weight)
             return
 
         # Shard indexes for loading the weight
         start_idx = self.shard_indices.org_vocab_start_index
         shard_size = self.shard_indices.org_vocab_end_index - start_idx
-
-        # If param packed on the same dim we are sharding on, then
-        # need to adjust offsets of loaded weight by pack_factor.
-        # if packed_dim is not None and packed_dim == output_dim:
-        #     packed_factor = param.packed_factor if isinstance(
-        #         param, BasevLLMParameter) else param.pack_factor
-        #     assert loaded_weight.shape[output_dim] == (self.org_vocab_size //
-        #                                                param.packed_factor)
-        #     start_idx = start_idx // packed_factor
-        #     shard_size = shard_size // packed_factor
-        # else:
-        #     assert loaded_weight.shape[output_dim] == self.org_vocab_size
-        assert loaded_weight.shape[output_dim] == self.org_vocab_size
+        if loaded_weight.shape[output_dim] != self.org_vocab_size:
+            raise ValueError(
+                f"'loaded_weight.shape[output_dim]' should be equal to 'org_vocab_size',"
+                f" but got {loaded_weight.shape[output_dim]} and {self.org_vocab_size}")
 
         # Copy the data.
         loaded_weight = loaded_weight.narrow(output_dim, start_idx, shard_size)
-
-        # if current_platform.is_hpu():
-        # TODO: to support hpu
-        if False:
-            # FIXME(kzawora): Weight copy with slicing bugs out on Gaudi here,
-            # so we're using a workaround. Remove this when fixed in
-            # HPU PT bridge.
-            # padded_weight = torch.cat([
-            #     loaded_weight,
-            #     torch.zeros(param.shape[0] - loaded_weight.shape[0],
-            #                 *loaded_weight.shape[1:])
-            # ])
-            # param.data.copy_(padded_weight)
-            ...
-        else:
-            # param[:loaded_weight.shape[0]].data.copy_(loaded_weight)
-            # param[loaded_weight.shape[0]:].data.fill_(0)
-            param[: loaded_weight.shape[0]] = loaded_weight
-            param[loaded_weight.shape[0] :] = 0
+        param[: loaded_weight.shape[0]] = loaded_weight
+        param[loaded_weight.shape[0]:] = 0
 
 
 class ParallelLMHead(VocabParallelEmbedding):

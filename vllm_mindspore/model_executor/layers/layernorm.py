@@ -15,12 +15,11 @@
 # limitations under the License.
 # ============================================================================
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Any
 
-from mindspore import Tensor
-from mindspore.ops import rms_norm
-from mindspore import mint
-import mindspore as ms
+from mindspore import Parameter, Tensor, mint, ops
+from mindspore.common import dtype as mstype
+from mindspore.common.dtype import typing
 
 from vllm_mindspore.model_executor.custom_op import CustomOp
 
@@ -31,27 +30,21 @@ class RMSNorm(CustomOp):
         hidden_size: int,
         eps: float = 1e-6,
         var_hidden_size: Optional[int] = None,
-    ):
+        params_dtype: Optional[Any] = mstype.float16,
+    ) -> None:
         super().__init__()
-
-        self.hidden_size = hidden_size
-        self.variance_epsilon = eps
-        self.variance_size_override = (
-            None if var_hidden_size == hidden_size else var_hidden_size
-        )
-        self.weight = ms.Parameter(mint.ones(hidden_size))
+        self.weight = Parameter(mint.ones(hidden_size, dtype=params_dtype))
+        self.rms_norm = ops.RmsNorm(eps)
 
     def forward_native(
-        self, x: Tensor, residual: Optional[Tensor] = None
+        self,
+        x: Tensor,
+        residual: Optional[Tensor] = None
     ) -> Union[Tensor, Tuple[Tensor, Tensor]]:
-        orig_dtype = x.dtype
-        x = x.to(ms.float32)
         if residual is not None:
-            x = x + residual.to(ms.float32)
-            residual = x.to(orig_dtype)
-        output, _ = rms_norm(x, self.weight, self.variance_epsilon)
-        output = output.to(orig_dtype)
+            x = x + residual
+            residual = x
+        output = self.rms_norm(x, self.weight)[0]
         if residual is None:
             return output
-        else:
-            return output, residual
+        return output, residual

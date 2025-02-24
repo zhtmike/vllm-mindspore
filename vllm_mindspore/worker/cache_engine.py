@@ -25,6 +25,7 @@ logger = init_logger(__name__)
 from vllm_mindspore.utils import MsKVCache, get_valid_dtype
 
 import mindspore as ms
+from mindspore import mutable
 
 
 def create_block(shape, dtype, name=None, device=None):
@@ -54,8 +55,8 @@ def ms_allocate_kv_cache(
         else:
             key_blocks = create_block(kv_cache_shape[1:], self.dtype, device="Ascend")
             value_blocks = create_block(kv_cache_shape[1:], self.dtype, device="Ascend")
-        kv_cache.append((key_blocks, value_blocks))
-    return kv_cache
+        kv_cache.append(mutable((mutable(key_blocks), mutable(value_blocks))))
+    return mutable(kv_cache)
 
 
 def ms_swap_in(self, src_to_dst: ms.Tensor) -> None:

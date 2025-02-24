@@ -48,6 +48,7 @@ from vllm_mindspore.attention.ops.paged_attn import PagedAttentionMetadata
 from vllm_mindspore.utils import MsKVCache
 
 import mindspore as ms
+from mindspore import mutable
 from mindspore._c_expression import swap_cache
 
 
@@ -158,6 +159,19 @@ class MSAttentionMetadata(AttentionMetadata, PagedAttentionMetadata):
         else:
             raise AttributeError(f"Invalid attention type {str(attn_type)}")
 
+    def keys(self):
+        return ["num_prefill_tokens", "num_decode_tokens", "slot_mapping", "batch_valid_length", "context_lens", "block_tables"]
+
+    def __getitem__(self, key):
+        if key == "context_lens":
+            key = "seq_lens_tensor"
+        if key == "batch_valid_length":
+            return mutable(getattr(self, "seq_lens"), dynamic_len=True)
+        if key == "block_tables":
+            if getattr(self, key).ndim == 1:
+                return mutable(getattr(self, key).expand_dims(0))
+            return mutable(getattr(self, key))
+        return mutable(getattr(self, key))
 
 class MsAttentionMetadataBuilder(AttentionMetadataBuilder[MSAttentionMetadata]):
 
@@ -300,7 +314,7 @@ class MsAttentionMetadataBuilder(AttentionMetadataBuilder[MSAttentionMetadata]):
         else:
             block_tables = make_tensor_with_pad(
                 self.block_tables,
-                pad=0,
+                pad=-1,
                 dtype=torch.int,
                 device=device,
             )

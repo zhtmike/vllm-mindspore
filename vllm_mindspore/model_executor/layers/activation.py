@@ -15,7 +15,7 @@
 # limitations under the License.
 # ============================================================================
 
-from mindspore import nn, mint, jit
+from mindspore import Tensor, mint, nn, ops
 
 
 class SiluAndMul(nn.Cell):
@@ -31,3 +31,26 @@ class SiluAndMul(nn.Cell):
     def construct(self, x):
         d = x.shape[-1] // 2
         return mint.nn.functional.silu(x[..., :d]) * x[..., d:]
+
+
+class SwiGLU(nn.Cell):
+    """An activation function for SwiGLU.
+
+    Shapes:
+        x: (batch_size, seq_len, 2 * hidden_size)
+        return: (batch_size, seq_len, hidden_size)
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.silu = nn.SiLU()
+        self.split = ops.auto_generate.SplitWithSize()
+        self.mul = ops.Mul()
+
+    def construct(self, x: Tensor) -> Tensor:
+        hidden_size = x.shape[-1] // 2
+        size = [hidden_size, hidden_size]
+        gate, hidden = self.split(x, size, dim=-1)
+        gate = self.silu(gate)
+        hidden = self.mul(hidden, gate)
+        return hidden

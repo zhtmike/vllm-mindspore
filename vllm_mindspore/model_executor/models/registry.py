@@ -27,6 +27,7 @@ from vllm.model_executor.models.registry import _ModelRegistry, _LazyRegisteredM
 
 _MINDSPORE_MODELS = {
     "LlamaForCausalLM": ("llama", "LlamaForCausalLM"),
+    "Qwen2ForCausalLM": ("qwen2", "Qwen2ForCausalLM"),
 }
 
 MindSporeModelRegistry = _ModelRegistry(

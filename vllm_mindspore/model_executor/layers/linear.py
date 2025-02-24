@@ -20,7 +20,7 @@ from abc import abstractmethod
 
 import numpy as np
 import mindspore as ms
-from mindspore import mint
+from mindspore import mint, ops, Tensor
 from mindspore import Parameter
 
 from vllm.distributed import (
@@ -114,14 +114,26 @@ class UnquantizedLinearMethod(LinearMethodBase):
             ),
             requires_grad=False,
         )
+        self.input_size_per_partition = int(input_size_per_partition)
+        self.output_size_per_partition = int(sum(output_partition_sizes))
         set_weight_attrs(weight, {"input_dim": 1, "output_dim": 0})
         # layer.register_parameter("weight", weight)
         layer.insert_param_to_cell("weight", weight)
         set_weight_attrs(weight, extra_weight_attrs)
+        self.matmul = ops.MatMul(transpose_b=True)
+        self.bias_add = ops.Add()
 
-    def apply(self, layer, x, bias=None):
-
-        return mint.nn.functional.linear(x, layer.weight, bias)
+    def apply(self,
+              layer: ms.nn.Cell,
+              x: Tensor,
+              bias: Parameter = None):
+        output_shape = x.shape[:-1] + (self.output_size_per_partition,)
+        x = x.reshape(-1, self.input_size_per_partition)
+        x = self.matmul(x, layer.weight)
+        if bias is not None:
+            x = self.bias_add(x, bias)
+        x = x.reshape(output_shape)
+        return x
 
 
 class LinearBase(ms.nn.Cell):
@@ -366,7 +378,7 @@ class MergedColumnParallelLinear(ColumnParallelLinear):
             assert param_data.shape == loaded_weight.shape
             # param_data.copy_(loaded_weight)
             # param_data.set_data(loaded_weight)
-            param[shard_offset : shard_offset + shard_size, :] = loaded_weight
+            param[shard_offset: shard_offset + shard_size, :] = loaded_weight
 
 
 class QKVParallelLinear(ColumnParallelLinear):
@@ -447,7 +459,10 @@ class QKVParallelLinear(ColumnParallelLinear):
             if not use_bitsandbytes_4bit:
                 loaded_weight = loaded_weight.narrow(output_dim, start_idx, shard_size)
             assert param_data.shape == loaded_weight.shape
-            self.weight[shard_offset : shard_offset + shard_size, :] = loaded_weight
+            if param.name.endswith("weight"):
+                self.weight[shard_offset: shard_offset + shard_size, :] = loaded_weight
+            if param.name.endswith("bias"):
+                self.bias[shard_offset: shard_offset + shard_size] = loaded_weight
         # tp_rank = get_tensor_model_parallel_rank()
         # if shard_id is "q":
         #     start_index = self.num_heads * tp_rank * self.head_size

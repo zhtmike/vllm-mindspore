@@ -40,6 +40,7 @@ from vllm.utils import T, TORCH_DTYPE_TO_NUMPY_DTYPE, make_ndarray_with_pad
 
 import mindspore as ms
 from mindspore.common.initializer import Zero
+from mindspore import dtype as mstype
 
 MsKVCache = Tuple[ms.Tensor, ms.Tensor]
 
@@ -216,6 +217,16 @@ STR_DTYPE_TO_TENSOR_DTYPE = {
     "fp8": torch.uint8,
     "fp8_e4m3": torch.uint8,
     "fp8_e5m2": torch.uint8,
+}
+
+STR_DTYPE_TO_MS_DTYPE = {
+    "half": mstype.float16,
+    "float16": mstype.float16,
+    "bfloat16": mstype.bfloat16,
+    "float": mstype.float32,
+    "fp8": mstype.uint8,
+    "fp8_e4m3": mstype.uint8,
+    "fp8_e5m2": mstype.uint8,
 }
 
 

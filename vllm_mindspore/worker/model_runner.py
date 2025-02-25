@@ -23,16 +23,22 @@ from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
 from vllm.sampling_params import SamplingParams
 from vllm.sequence import SequenceGroupMetadata
+from vllm_mindspore.utils import STR_DTYPE_TO_TENSOR_DTYPE
+
+from mindspore.common import dtype as mstype
+from mindspore import mutable, Tensor
 
 logger = init_logger(__name__)
 
 LORA_WARMUP_RANK = 8
+
 
 def _get_cuda_graph_pad_size(
     self, num_seqs: int, max_decode_seq_len: int, max_encoder_seq_len: int = 0
 ) -> int:
     # No need to use cuda graph for mindspore.
     return -1
+
 
 def profile_run(self) -> None:
     # Enable top-k sampling to reflect the accurate memory usage.
@@ -56,7 +62,7 @@ def profile_run(self) -> None:
                     lora_path="/not/a/real/path",
                 )
                 self.lora_manager.add_dummy_lora(dummy_lora_request,
-                                                    rank=LORA_WARMUP_RANK)
+                                                 rank=LORA_WARMUP_RANK)
                 dummy_lora_requests.append(dummy_lora_request)
             dummy_lora_requests_per_seq = [
                 dummy_lora_requests[idx % len(dummy_lora_requests)]
@@ -78,7 +84,7 @@ def profile_run(self) -> None:
     if max_mm_tokens > 0:
         max_num_seqs_orig = max_num_seqs
         max_num_seqs = min(max_num_seqs,
-                            max_num_batched_tokens // max_mm_tokens)
+                           max_num_batched_tokens // max_mm_tokens)
         if max_num_seqs < 1:
             expr = (f"min({max_num_seqs_orig}, "
                     f"{max_num_batched_tokens} // {max_mm_tokens})")
@@ -90,13 +96,13 @@ def profile_run(self) -> None:
     batch_size = 0
     for group_id in range(max_num_seqs):
         seq_len = (max_num_batched_tokens // max_num_seqs +
-                    (group_id < max_num_batched_tokens % max_num_seqs))
+                   (group_id < max_num_batched_tokens % max_num_seqs))
         batch_size += seq_len
 
         dummy_data = self.input_registry \
             .dummy_data_for_profiling(self.model_config,
-                                        seq_len,
-                                        self.mm_registry)
+                                      seq_len,
+                                      self.mm_registry)
 
         seq = SequenceGroupMetadata(
             request_id=str(group_id),
@@ -122,13 +128,20 @@ def profile_run(self) -> None:
     # tensor aliasing.
 
     # TODO(tronzhang): MindSpore's tensor view is limit now, delete this whole funtion patching latter.
-    kv_caches = [
-        (
-            torch.tensor([], dtype=torch.float32, device=self.device),
-            torch.tensor([], dtype=torch.float32, device=self.device)
-        )
+    kv_cache_dtype = self.model_config.dtype if self.cache_config.cache_dtype == "auto" \
+        else self.cache_config.cache_dtype
+    kv_cache_dtype = STR_DTYPE_TO_TENSOR_DTYPE[kv_cache_dtype]
+    block_size = self.cache_config.block_size
+    num_kv_heads = self.model_config.get_num_kv_heads(self.parallel_config)
+    head_size = self.model_config.get_head_size()
+    kv_shape = [0, block_size, num_kv_heads, head_size]
+    kv_caches = mutable([
+        mutable((
+            mutable(torch.tensor([], dtype=kv_cache_dtype, device=self.device).reshape(kv_shape)),
+            mutable(torch.tensor([], dtype=kv_cache_dtype, device=self.device).reshape(kv_shape)),
+        ))
         for _ in range(num_layers)
-    ]
+    ])
     finished_requests_ids = [seq.request_id for seq in seqs]
     model_input = self.prepare_model_input(
         seqs, finished_requests_ids=finished_requests_ids)

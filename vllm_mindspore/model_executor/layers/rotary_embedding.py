@@ -15,13 +15,12 @@
 # limitations under the License.
 # ============================================================================
 
-import math
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
-from mindspore import Tensor
-from mindspore import mint
-from mindspore import ops
-import mindspore as ms
+import numpy as np
+from mindspore import Tensor, mint, ops
+from mindspore.common import dtype as mstype
+
 from vllm_mindspore.model_executor.custom_op import CustomOp
 
 
@@ -85,14 +84,14 @@ class RotaryEmbedding(CustomOp):
         # a slight numerical difference between the HF implementation and ours.
         inv_freq = 1.0 / (
             base
-            ** (mint.arange(0, self.rotary_dim, 2, dtype=ms.float32) / self.rotary_dim)
+            ** (mint.arange(0, self.rotary_dim, 2, dtype=mstype.float32) / self.rotary_dim)
         )
         return inv_freq
 
     def _compute_cos_sin_cache(self) -> Tensor:
         """Compute the cos and sin cache."""
         inv_freq = self._compute_inv_freq(self.base)
-        t = mint.arange(self.max_position_embeddings, dtype=ms.float32)
+        t = mint.arange(self.max_position_embeddings, dtype=mstype.float32)
 
         # freqs = ops.einsum("i,j -> ij", t, inv_freq)
         freqs = ops.outer(t, inv_freq)
@@ -119,20 +118,62 @@ class RotaryEmbedding(CustomOp):
         query_shape = query.shape
         query = query.view(num_tokens, -1, self.head_size)
         query_rot = query[..., : self.rotary_dim]
-        query_pass = query[..., self.rotary_dim :]
+        query_pass = query[..., self.rotary_dim:]
         query_rot = _apply_rotary_emb(query_rot, cos, sin, self.is_neox_style)
         query = mint.cat((query_rot, query_pass), dim=-1).reshape(query_shape)
 
         key_shape = key.shape
         key = key.view(num_tokens, -1, self.head_size)
         key_rot = key[..., : self.rotary_dim]
-        key_pass = key[..., self.rotary_dim :]
+        key_pass = key[..., self.rotary_dim:]
         key_rot = _apply_rotary_emb(key_rot, cos, sin, self.is_neox_style)
         key = mint.cat((key_rot, key_pass), dim=-1).reshape(key_shape)
         return query, key
 
 
-_ROPE_DICT: Dict[Tuple, RotaryEmbedding] = {}
+class InferRotaryEmbedding(CustomOp):
+    def __init__(
+        self,
+        head_size: int,
+        rotary_dim: int,
+        max_position_embeddings: int,
+        base: int,
+        is_neox_style: bool,
+        dtype,
+    ) -> None:
+        super().__init__()
+        freqs_base = np.arange(0, rotary_dim, 2)[: (rotary_dim // 2)].astype(np.float32)  # (head_dim // 2, )
+        freqs = 1.0 / (base ** (freqs_base / rotary_dim))  # (head_dim // 2, )
+        mscale = 1.0
+        t = np.arange(0, max_position_embeddings, 1).astype(np.float32)
+
+        self.freqs = Tensor(freqs.reshape(1, 1, 1, -1), dtype=dtype)
+        freqs = np.outer(t, freqs)  # (max_position_embedding, head_dim // 2)
+        emb = np.concatenate((freqs, freqs), axis=-1)
+        freqs_cos = np.cos(emb) * mscale  # (seq_len, head_dim)
+        freqs_sin = np.sin(emb) * mscale  # (seq_len, head_dim)
+        self.freqs_cos = Tensor(freqs_cos, dtype=dtype)
+        self.freqs_sin = Tensor(freqs_sin, dtype=dtype)
+        self.rotary_embedding_op = ops.ApplyRotaryPosEmb(2)
+
+    def forward_native(
+        self,
+        positions: Tensor,
+        query: Tensor,
+        key: Tensor,
+        batch_valid_length: Tensor,
+        num_prefill_tokens: int,
+        offsets: Optional[Tensor] = None,
+    ) -> Tuple[Tensor, Tensor]:
+        if num_prefill_tokens > 0:
+            return self.rotary_embedding_op(query, key, self.freqs_cos, self.freqs_sin, batch_valid_length)
+
+        freqs_cos = self.freqs_cos.index_select(0, positions)
+        freqs_sin = self.freqs_sin.index_select(0, positions)
+        return self.rotary_embedding_op(query, key, freqs_cos, freqs_sin, batch_valid_length)
+
+
+_ROPE_DICT: Dict[Tuple, InferRotaryEmbedding] = {}
 
 
 def get_rope(
@@ -144,34 +185,27 @@ def get_rope(
     rope_scaling: Optional[Dict[str, Any]] = None,
     dtype=None,
     partial_rotary_factor: float = 1.0,
-) -> RotaryEmbedding:
+) -> InferRotaryEmbedding:
     if dtype is None:
-        # dtype = torch.get_default_dtype()
-        dtype = ms.float16
+        dtype = mstype.bfloat16
 
     if rope_scaling is not None:
         # Transforms every value that is a list into a tuple for caching calls
         rope_scaling_tuple = {
-            k: tuple(v) if isinstance(v, list) else v for k, v in rope_scaling.items()
+            k: tuple(v) if isinstance(v, list) else v
+            for k, v in rope_scaling.items()
         }
         rope_scaling_args = tuple(rope_scaling_tuple.items())
     else:
         rope_scaling_args = None
     if partial_rotary_factor < 1.0:
         rotary_dim = int(rotary_dim * partial_rotary_factor)
-    key = (
-        head_size,
-        rotary_dim,
-        max_position,
-        base,
-        is_neox_style,
-        rope_scaling_args,
-        dtype,
-    )
 
+    key = (head_size, rotary_dim, max_position, base, is_neox_style,
+           rope_scaling_args, dtype)
     if key in _ROPE_DICT:
         return _ROPE_DICT[key]
-    rotary_emb = RotaryEmbedding(
+    rotary_emb = InferRotaryEmbedding(
         head_size,
         rotary_dim,
         max_position,

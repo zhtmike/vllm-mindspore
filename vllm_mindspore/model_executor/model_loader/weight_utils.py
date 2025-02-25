@@ -21,6 +21,7 @@ from typing import Generator, List, Tuple
 import torch
 
 import mindspore as ms
+from mindspore import Parameter, Tensor
 
 
 def safetensors_weights_iterator(
@@ -43,3 +44,9 @@ def safetensors_weights_iterator(
             for name in f.keys():
                 param = f.get_tensor(name)
                 yield name, ms.tensor(param)
+
+
+def default_weight_loader(param: Parameter,
+                          loaded_weight: Tensor) -> None:
+    """Default weight loader."""
+    param.set_data(loaded_weight)

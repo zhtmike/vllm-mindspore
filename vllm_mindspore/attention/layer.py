@@ -15,42 +15,92 @@
 # limitations under the License.
 # ============================================================================
 """Common layer for LLM."""
-from typing import Optional, List
+from typing import Any, Dict, List, Optional, Tuple
 
-from mindspore import Tensor
-from mindspore import nn
-from mindspore.ops.auto_generate import ReshapeAndCache, PagedAttention
+from mindspore import Tensor, mint, nn, ops, jit
+from mindspore.common import dtype as mstype
+from mindspore.ops.auto_generate import PagedAttention, ReshapeAndCache
 from mindspore.ops.operations.nn_ops import FlashAttentionScore
-from mindspore import mint
-from mindspore import ops
-import mindspore as ms
 
-from vllm.attention.backends.abstract import AttentionType, AttentionMetadata
+from vllm.config import CacheConfig
+from vllm.attention.backends.abstract import AttentionType
+from vllm.model_executor.layers.quantization.base_config import (
+    QuantizationConfig)
 
 
-def _pad_to_max_tensor(tensor, max_len, dim=0, pad_value=-1):
-    if tensor.shape[dim] == max_len:
-        return tensor
-
-    dst_shape = tensor.shape
-    pad_tensor = ops.fill(
-        type=tensor.dtype,
-        shape=(max_len - dst_shape[dim], *dst_shape[dim + 1 :]),
-        value=pad_value,
-    )
-    output = mint.cat([tensor, pad_tensor], dim=dim)
+def _pad_to_max_tensor(
+        input_: Tensor,
+        max_len: int,
+        dim: int = 0,
+        pad_value: int = -1
+) -> Tensor:
+    """Temporary function, will be deprecated in the future."""
+    if input_.shape[dim] == max_len:
+        return input_
+    pad_shape = (input_.shape[0], max_len - input_.shape[dim], *input_.shape[dim + 1:])
+    pad_tensor = mint.ones(size=pad_shape, dtype=input_.dtype) * pad_value
+    output = mint.cat([input_, pad_tensor], dim=dim)
     return output
 
 
-def _generate_attn_mask(bsz, q_len, kv_len, flatten=False):
+def _generate_attn_mask(
+    query: Tensor,
+    value: Tensor,
+    flatten: bool
+) -> Tensor:
+    """Temporary function, will be deprecated in the future."""
     if flatten:
-        raise NotImplementedError("flatten not support yet")
-    mask = mint.ones((bsz, 1, q_len, kv_len), dtype=ms.uint8)
+        return mint.triu(mint.ones(size=(128, 128), dtype=query.dtype), 1)
+    q_seq_len = query.shape[1]
+    kv_seq_len = value.shape[1]
+    mask = mint.ones((q_seq_len, kv_seq_len), dtype=mstype.uint8)
     mask = mint.triu(mask, diagonal=1)
     return mask
 
 
+def _hidden_states_th2bsh(
+    input_: Tensor,
+    batch_valid_length: Tensor
+) -> Tensor:
+    """Temporary function, will be deprecated in the future."""
+    max_seq_len = batch_valid_length.max().item()
+    start_pos = 0
+    padding_input_list = []
+    for valid_length in batch_valid_length:
+        valid_input = input_[:, start_pos: start_pos + valid_length, :]
+        padded_input = _pad_to_max_tensor(valid_input, max_seq_len, 1)
+        padding_input_list.append(padded_input)
+        start_pos += valid_length
+    bsh_output = mint.cat(padding_input_list, dim=0)
+    return bsh_output
+
+
+def _hidden_states_bsh2th(
+    input_: Tensor,
+    batch_valid_length: Tensor
+) -> Tensor:
+    """Temporary function, will be deprecated in the future."""
+    unpadded_input_list = []
+    for batch_index, valid_length in enumerate(batch_valid_length):
+        padded_input = input_[batch_index:batch_index + 1]
+        unpadded_input = padded_input[:, :valid_length, ...]
+        unpadded_input_list.append(unpadded_input)
+    th_output = mint.cat(unpadded_input_list, dim=1)
+    return th_output
+
+
 class Attention(nn.Cell):
+    """Attention layer.
+
+    This class takes query, key, and value tensors as input. The input tensors
+    can either contain prompt tokens or generation tokens.
+    The class does the following:
+
+    1. Store the input key and value tensors in the KV cache.
+    2. Perform (multi-head/multi-query/grouped-query) attention.
+    3. Return the output tensor.
+    """
+
     def __init__(
         self,
         num_heads: int,
@@ -58,232 +108,132 @@ class Attention(nn.Cell):
         scale: float,
         num_kv_heads: Optional[int] = None,
         alibi_slopes: Optional[List[float]] = None,
-        cache_config=None,
-        quant_config=None,
-        blocksparse_params=None,
+        cache_config: Optional[CacheConfig] = None,
+        quant_config: Optional[QuantizationConfig] = None,
+        blocksparse_params: Optional[Dict[str, Any]] = None,
         logits_soft_cap: Optional[float] = None,
         per_layer_sliding_window: Optional[int] = None,
+        use_mla: bool = False,
         prefix: str = "",
-    ):
+        attn_type: str = AttentionType.DECODER,
+        **extra_impl_args,
+    ) -> None:
         super().__init__()
+        if attn_type != AttentionType.DECODER:
+            raise NotImplementedError("Only support DECODER now.")
         if not num_kv_heads:
             num_kv_heads = num_heads
+        self.attn_type = attn_type
         self.num_heads = num_heads
         self.num_kv_heads = num_kv_heads
         self.head_size = head_size
-        self.scale = float(scale)
+        self.hidden_size_per_partition = num_heads*head_size
+        self.kv_hidden_size_per_partition = num_kv_heads*head_size
+        self.flatten = True
 
-        if cache_config is not None:
-            kv_cache_dtype = cache_config.cache_dtype
-            block_size = cache_config.block_size
-            is_attention_free = cache_config.is_attention_free
-        else:
-            kv_cache_dtype = "auto"
-            block_size = 16
-            is_attention_free = False
-
-        self.paged_attention = PagedAttention(num_heads, self.scale, num_kv_heads)
-        self.reshape_and_cache = ReshapeAndCache()
-
-        keep_prob = 1.0
+        input_layout = "TH" if self.flatten else "BSH"  # pynative 下不支持拉平操作。
+        scale = float(scale)
         pre_tokens = 2147483647
         next_tokens = 2147483647
-        self.input_layout = "BSH"
-        self.sparse_mode = 0
-        self.flash_attention = FlashAttentionScore(
-            head_num=num_heads,
-            keep_prob=keep_prob,
-            scale_value=self.scale,
-            pre_tokens=pre_tokens,
-            next_tokens=next_tokens,
-            inner_precise=0,
-            input_layout=self.input_layout,
-            sparse_mode=self.sparse_mode,
-        )
 
+        self.reshape_and_cache = ReshapeAndCache()
+        self.flash_attention = FlashAttentionScore(head_num=num_heads,
+                                                   scale_value=scale,
+                                                   pre_tokens=pre_tokens,
+                                                   next_tokens=next_tokens,
+                                                   input_layout=input_layout)
+        self.paged_attention = PagedAttention(head_num=num_heads,
+                                              scale_value=scale,
+                                              kv_head_num=num_kv_heads)
+
+    @jit
     def construct(
         self,
         query: Tensor,
         key: Tensor,
         value: Tensor,
-        kv_cache: Tensor,
-        attn_metadata: AttentionMetadata,
-        attn_type: str = AttentionType.DECODER,
-    ):
-        block_table = attn_metadata.block_tables
-        slot_mapping = attn_metadata.slot_mapping
+        kv_cache: Tuple[Tensor, Tensor],
+        # attn_metadata: MSMetadata,
+        num_prefill_tokens: int,
+        num_decode_tokens: int,
+        slot_mapping: Tensor,
+        batch_valid_length: Tuple[int],
+        context_lens: Tensor,
+        block_tables: Tensor,
+    ) -> Tensor:
+        """Attention foward, support MHA and GQA.
 
-        if key is not None:
-            assert value is not None
-        else:
-            assert value is None
-
-        if attn_type != AttentionType.ENCODER and (
-            kv_cache is not None and kv_cache[0].numel() > 0
-        ):
-            # KV-cache during decoder-self- or
-            # encoder-decoder-cross-attention, but not
-            # during encoder attention.
-            #
-            # Even if there are no new key/value pairs to cache,
-            # we still need to break out key_cache and value_cache
-            # i.e. for later use by paged attention
-            key_cache, value_cache = self.split_kv_cache(
-                kv_cache, self.num_kv_heads, self.head_size
-            )
-
-            if (key is not None) and (value is not None):
-                if attn_type == AttentionType.ENCODER_DECODER:
-                    # Update cross-attention KV cache (prefill-only)
-                    # During cross-attention decode, key & value will be None,
-                    # preventing this IF-statement branch from running
-                    updated_slot_mapping = attn_metadata.cross_slot_mapping
-                else:
-                    # Update self-attention KV cache (prefill/decode)
-                    updated_slot_mapping = attn_metadata.slot_mapping
-
-                self.reshape_and_cache(
-                    key.view(1, *key.shape),
-                    value.view(1, *value.shape),
-                    key_cache,
-                    value_cache,
-                    updated_slot_mapping,
-                )
-
-        if prefill_meta := attn_metadata.prefill_metadata:
-            assert attn_metadata.seq_lens is not None
-            if not prefill_meta.prefill_metadata.chunked_prefill:  # type: ignore
-                # 只有图模式atb下才能支持拉平。
-                output = self._run_prefill_forward(
-                    query, key, value, prefill_meta, attn_type=attn_type
-                )
-            else:
-                # TODO: to support CPP
-                raise NotImplementedError("not support CPP yet")
-
-        if decode_meta := attn_metadata.decode_metadata:
-            assert (
-                attn_type != AttentionType.ENCODER_ONLY
-            ), "Encoder-only models should not have decode metadata."
-            # Decoding run.
-            (
-                seq_lens_arg,
-                max_seq_len_arg,
-                block_tables_arg,
-            ) = decode_meta.get_seq_len_block_table_args(attn_type)
-
-            alibi_mask = None
-            output = self._run_decode_attention(
-                query,
-                key_cache,
-                value_cache,
-                seq_lens_arg,
-                block_tables_arg,
-                alibi_mask,
-            )
-
-        return output
-
-    def _run_decode_attention(
-        self, query, key_cache, value_cache, seq_lens_arg, block_tables, alibi_mask=None
-    ):
-        # TODO: to support alibi mask
-        # if self.use_alibi_mask:
-        #     return self.paged_attention(query, key_cache, value_cache, batch_valid_length, block_tables, alibi_mask)
-
-        bsz = block_tables.shape[0]
-        query = query.reshape(bsz, -1, query.shape[-1])
-        output = self.paged_attention(
-            query, key_cache, value_cache, block_tables, context_lens=seq_lens_arg
-        )
-        output = output.reshape(-1, query.shape[-1])
+        Args:
+            query: shape = [1, num_tokens, hidden_size]
+            key: shape = [1, num_tokens, hidden_size]
+            value: shape = [1, num_tokens, hidden_size]
+            ...
+            slot_mapping: shape = [seq_length, ]
+            batch_valid_length: shape = [batch_size, ]
+            block_tables: shape = [block_size, num_block]
+        """
+        output = query
+        key_cache, value_cache = kv_cache
+        cache_out = self.reshape_and_cache(key, value, key_cache, value_cache, slot_mapping)
+        query = ops.depend(query, cache_out)
+        if num_prefill_tokens > 0:
+            output = self._run_prefill_forward(query, key, value, batch_valid_length, batch_valid_length)
+        if num_decode_tokens > 0:
+            output = self._run_decode_forward(query, key_cache, value_cache, block_tables, context_lens)
         return output
 
     def _run_prefill_forward(
         self,
-        query,
-        key,
-        value,
-        attn_metadata: AttentionMetadata,
-        attn_type: str = AttentionType.DECODER,
-    ):
-        causal_attn = attn_type == AttentionType.DECODER
-        alibi_mask = None
-        padding_mask = None
-        prefix = None
+        query: Tensor,
+        key: Tensor,
+        value: Tensor,
+        actual_seq_qlen: Tuple[int],
+        actual_seq_kvlen: Tuple[int],
+    ) -> Tensor:
+        """Prefill with FlashAttention.
 
-        seq_lens_q, seq_lens_kv = attn_metadata.get_seq_lens(attn_type)
-        seq_lens, _ = attn_metadata.get_seq_lens(attn_type)
-
-        max_q_len = max(seq_lens_q)
-        max_kv_len = max(seq_lens_kv)
-
-        start_pos = 0
-        q_list = []
-        for seq_len_q in seq_lens_q:
-            q = query[start_pos : start_pos + seq_len_q, :]
-            q = _pad_to_max_tensor(q, max_q_len)
-            q_list.append(q)
-            start_pos += seq_len_q
-        query = mint.stack(q_list)
-
-        k_list = []
-        v_list = []
-        start_pos = 0
-        for seq_len_kv in seq_lens_kv:
-            k = key[start_pos : start_pos + seq_len_kv, :]
-            k = _pad_to_max_tensor(k, max_kv_len)
-            k_list.append(k)
-
-            v = value[start_pos : start_pos + seq_len_kv, :]
-            v = _pad_to_max_tensor(v, max_kv_len)
-            v_list.append(v)
-
-            start_pos += seq_len_kv
-
-        key = mint.stack(k_list)
-        value = mint.stack(v_list)
-
-        batch_size = len(seq_lens_q)
-        attn_masks = _generate_attn_mask(
-            batch_size, max_q_len, max_kv_len, flatten=False
-        )
-        _, _, _, output = self.flash_attention(
-            query,
-            key,
-            value,
-            alibi_mask,
-            None,
-            padding_mask,
-            attn_masks,
-            prefix,
-            None,
-            None,
-        )
-
-        output_list = []
-        bsz = output.shape[0]
-        for i in range(bsz):
-            output_i = output[i]
-            seq_len = seq_lens_q[i]
-            output_i = output_i[:seq_len, ...]
-            output_list.append(output_i)
-        output = mint.cat(output_list, dim=0)
+        Args:
+            query: shape = [1, num_tokens, hidden_size]
+            key: shape = [1, num_tokens, hidden_size]
+            value: shape = [1, num_tokens, hidden_size]
+            actual_seq_qlen: shape = [batch_size, ]
+            actual_seq_kvlen: shape = [batch_size, ]
+        NOTE: Currently `PyNative` mode does not support operations in "TH" form, so it will be converted to "BSH" form.
+        """
+        batch_size = query.shape[0]
+        query = query.view(-1, self.hidden_size_per_partition)
+        key = key.view(-1, self.kv_hidden_size_per_partition)
+        value = value.view(-1, self.kv_hidden_size_per_partition)
+        attn_mask = mint.triu(mint.ones(size=(128, 128), dtype=query.dtype), 1)
+        _, _, _, output = self.flash_attention(query,
+                                               key,
+                                               value,
+                                               None,
+                                               None,
+                                               None,
+                                               attn_mask,
+                                               None,
+                                               actual_seq_qlen,
+                                               actual_seq_kvlen)
+        output = output.view(batch_size, -1, self.hidden_size_per_partition)
         return output
 
-    def split_kv_cache(
+    def _run_decode_forward(
         self,
-        kv_cache,
-        num_kv_heads: int,
-        head_size: int,
-    ):
-        # TODO: to support view operation on mindspore.
-        # num_blocks = kv_cache.shape[1]
+        query: Tensor,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        block_tables: Tensor,
+        context_lens: Tensor,
+    ) -> Tensor:
+        """Decode with PagedAttention.
 
-        # key_cache = kv_cache[0]
-        # key_cache = key_cache.view(num_blocks, -1, num_kv_heads, head_size)
-        # value_cache = kv_cache[1]
-        # value_cache = value_cache.view(num_blocks, -1, num_kv_heads, head_size)
-        key_cache = kv_cache[0]
-        value_cache = kv_cache[1]
-        return key_cache, value_cache
+        Args:
+            query: shape = [batch_size, 1, hidden_size]
+            key_cache: shape = [num_block, block_size, kv_heads_per_partition, head_size]
+            value_cache: shape = [num_block, block_size, kv_heads_per_partition, head_size]
+            block_tables: shape = [block_size, num_block]
+            context_lens: shape = [batch_size, ]
+        """
+        output = self.paged_attention(query, key_cache, value_cache, block_tables, context_lens)
+        return output

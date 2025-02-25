@@ -298,7 +298,7 @@ def _prepare_seq_groups(
 
         if seq_group_metadata.is_prompt:
             if sampling_params.seed is not None:
-                generator = ms.Generator(device=device).manual_seed(
+                generator = ms.Generator().manual_seed(
                     sampling_params.seed
                 )
                 if generators is not None:

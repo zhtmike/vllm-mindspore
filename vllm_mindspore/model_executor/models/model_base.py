@@ -71,7 +71,7 @@ class MsModelBase:
 
         return params_dict
 
-    def named_modules(self):
+    def named_modules(self, remove_duplicate: bool = True):
         self._check_modules_valid()
 
         res_modules = set()

@@ -1,1 +1,0 @@
-from .utils import _FAKE_CONFIG

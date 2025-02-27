@@ -398,7 +398,7 @@ class MsAttentionBackend(AttentionBackend):
         kv_caches: List[MsKVCache],
         src_to_dists: torch.Tensor,
     ) -> None:
-        # TODO(tronzhang): this may be slow, a faster interface should be implemented!
+        # TODO(tronzhang): this may be slow, a faster interface should be implemented by custom op!
         blocks_to_copy = src_to_dists.asnumpy().tolist()
         for kv_cache in kv_caches:
             npu_key_block, npu_value_block = kv_cache
@@ -473,3 +473,60 @@ class MsAttentionImpl(AttentionImpl):
         NOTE: It in-place updates the output tensor.
         """
         pass
+
+
+class MLABackend(AttentionBackend):
+    @staticmethod
+    def get_name() -> str:
+        return "MS_MLA"
+
+    @staticmethod
+    def get_impl_cls() -> Type["AttentionImpl"]:
+        return MsAttentionImpl
+
+    @staticmethod
+    def get_metadata_cls() -> Type["AttentionMetadata"]:
+        return MSAttentionMetadata
+
+    @staticmethod
+    def get_builder_cls() -> Type["MsAttentionMetadataBuilder"]:
+        return MsAttentionMetadataBuilder
+
+    @staticmethod
+    def get_state_cls() -> Type["AttentionState"]:
+        return MsAttentionState
+
+    @staticmethod
+    def get_kv_cache_shape(
+        num_blocks: int,
+        block_size: int,
+        num_kv_heads: int,  # assumed to be 1 for MLA
+        head_size: int,
+    ) -> Tuple[int, ...]:
+        return (1, num_blocks, block_size, 1, head_size)
+
+    @staticmethod
+    def swap_blocks(
+        src_kv_cache: torch.Tensor,
+        dst_kv_cache: torch.Tensor,
+        src_to_dst: torch.Tensor,
+    ) -> None:
+        src_key_cache = src_kv_cache[0]
+        dst_key_cache = dst_kv_cache[0]
+        swap_cache(src_key_cache, dst_key_cache, src_to_dst)
+
+
+    @staticmethod
+    def copy_blocks(
+        kv_caches: List[torch.Tensor],
+        src_to_dists: torch.Tensor,
+    ) -> None:
+        blocks_to_copy = src_to_dists.asnumpy().tolist()
+        for kv_cache in kv_caches:
+            npu_key_block = kv_cache[0]
+            for src, dst in blocks_to_copy:
+                npu_key_block[dst, :] = npu_key_block[src, :]
+
+    @staticmethod
+    def get_supported_head_sizes() -> List[int]:
+        return [576]

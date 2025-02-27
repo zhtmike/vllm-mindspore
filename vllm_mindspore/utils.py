@@ -150,12 +150,21 @@ def memory_profiling(
 
     diff = result.after_profile - result.before_profile
     result.torch_peak_increase_in_bytes = diff.torch_peak_in_bytes
-    
+
     # For mindspore, the memory is allocated and free in memory pool, so cannot read the current used memory by `torch.cuda.mem_get_info`.
     current_cuda_memory_bytes = result.after_profile.torch_memory_in_bytes
-    result.non_torch_increase_in_bytes = current_cuda_memory_bytes - baseline_memory_in_bytes - weights_memory_in_bytes - diff.torch_memory_in_bytes  # noqa
+    result.non_torch_increase_in_bytes = (
+        current_cuda_memory_bytes
+        - baseline_memory_in_bytes
+        - weights_memory_in_bytes
+        - diff.torch_memory_in_bytes
+    )  # noqa
     result.profile_time = diff.timestamp
-    result.non_kv_cache_memory_in_bytes = result.non_torch_increase_in_bytes + result.torch_peak_increase_in_bytes + result.weights_memory_in_bytes  # noqa
+    result.non_kv_cache_memory_in_bytes = (
+        result.non_torch_increase_in_bytes
+        + result.torch_peak_increase_in_bytes
+        + result.weights_memory_in_bytes
+    )  # noqa
 
 
 def _create_empty_tensor(ms_type):
@@ -237,7 +246,7 @@ def get_dtype_size(dtype: torch.dtype) -> int:
     return torch.tensor([1], dtype=dtype).itemsize
 
 
-def _parse_visible_ascend_device() -> List[str]:
+def ascend_device_count_stateless() -> List[str]:
     visible_device_str = os.environ.get("ASCEND_RT_VISIBLE_DEVICES", None)
     if visible_device_str:
         try:
@@ -255,17 +264,58 @@ def _parse_visible_ascend_device() -> List[str]:
 
     output = subprocess.check_output(["npu-smi", "info"], encoding="utf-8")
     res = re.findall(
-        r"\|\s+(\d+)\s+\w+\s+\|\s+OK\s+\|\s+[0-9\.]+\s+[0-9\.]+\s+\d+\s+\/\s+\d+\s+\|",
+        r"\|\s+\d+\s+\w+\s+\|\s+(\w+)\s+\|\s+(?:[0-9\.]+|-)\s+[0-9\.]+\s+\d+\s+\/\s+\d+\s+\|",
         output,
     )
-    return res
 
+    avl_devices = [str(i) for i, stat in enumerate(res) if stat == "OK"]
+    visible_device_str = ",".join(avl_devices)
+    os.environ["ASCEND_RT_VISIBLE_DEVICES"] = visible_device_str
+    logger.info('Set environ "ASCEND_RT_VISIBLE_DEVICES" as %s' % visible_device_str)
 
-def ascend_device_count_stateless() -> int:
-    visible_devices = _parse_visible_ascend_device()
-    return len(visible_devices)
+    return len(res)
 
 
 def ascend_is_initialized():
     # Just return true for check.
     return True
+
+
+def is_mindformers_model_backend():
+    return (
+        os.getenv("vLLM_MODEL_BACKEND")
+        and os.environ["vLLM_MODEL_BACKEND"] == "MindFormers"
+    )
+
+
+def check_ready():
+    if is_mindformers_model_backend():
+        necessary_envs = ("vLLM_MODEL_MEMORY_USE_GB", "MINDFORMERS_MODEL_CONFIG")
+        lost_envs = [env_item for env_item in necessary_envs if not os.getenv(env_item)]
+
+        if lost_envs:
+            raise RuntimeError(
+                'For "MindFormers" model backend, environments %s should be set!'
+                % str(lost_envs)
+            )
+
+        import mindspore as ms
+
+        ms.set_context(mode=0, device_target="Ascend", max_call_depth=10000)
+
+
+def cal_block_num(cache_config, model_config, parallel_config):
+    from vllm.worker.cache_engine import CacheEngine
+
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
+    _, total_gpu_memory = torch.cuda.mem_get_info()
+    memory_can_use = total_gpu_memory * cache_config.gpu_memory_utilization
+
+    model_use_memory_b = int(os.getenv("vLLM_MODEL_MEMORY_USE_GB")) * 1024 * 1024 * 1024
+    available_cache_memory = memory_can_use - model_use_memory_b
+    cache_block_size = CacheEngine.get_cache_block_size(
+        cache_config, model_config, parallel_config
+    )
+    num_gpu_blocks = int(available_cache_memory // cache_block_size)
+    return num_gpu_blocks

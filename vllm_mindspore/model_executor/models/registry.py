@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+
 import os
 import pickle
 import subprocess
@@ -25,9 +26,16 @@ import cloudpickle
 
 from vllm.model_executor.models.registry import _ModelRegistry, _LazyRegisteredModel
 
+from vllm_mindspore.utils import is_mindformers_model_backend
+
 _MINDSPORE_MODELS = {
     "LlamaForCausalLM": ("llama", "LlamaForCausalLM"),
     "Qwen2ForCausalLM": ("qwen2", "Qwen2ForCausalLM"),
+}
+
+_MINDFORMERS_MODELS = {
+    "Qwen2ForCausalLM": ("qwen2", "Qwen2ForCausalLM"),
+    "DeepseekV3ForCausalLM": ("deepseek_v3", "DeepseekV3ForCausalLM"),
 }
 
 MindSporeModelRegistry = _ModelRegistry(
@@ -37,6 +45,14 @@ MindSporeModelRegistry = _ModelRegistry(
             class_name=cls_name,
         )
         for model_arch, (mod_relname, cls_name) in _MINDSPORE_MODELS.items()
+    }
+    if not is_mindformers_model_backend()
+    else {
+        model_arch: _LazyRegisteredModel(
+            module_name=f"vllm_mindspore.model_executor.models.mf_models.{mod_relname}",
+            class_name=cls_name,
+        )
+        for model_arch, (mod_relname, cls_name) in _MINDFORMERS_MODELS.items()
     }
 )
 

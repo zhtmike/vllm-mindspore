@@ -21,7 +21,6 @@ import logging
 import os
 import subprocess
 import sys
-from pathlib import Path
 from typing import List
 
 from setuptools import find_packages, setup
@@ -100,10 +99,6 @@ def prepare_submodules() -> None:
     _run_cmd("git submodule update --init vllm_mindspore/msadapter", check=False)
     os.chdir(get_path("vllm_mindspore", "msadapter"))
 
-    patch_dir = Path(ROOT_DIR) / "patch" / "msadapter"
-    for p in patch_dir.glob("*.patch"):
-        _run_cmd("git apply {}".format(p))
-
     # Add __init__.py for packing.
     _run_cmd("touch __init__.py")
     _run_cmd("touch mindtorch/__init__.py")
@@ -112,6 +107,7 @@ def prepare_submodules() -> None:
 
 
 prepare_submodules()
+
 
 setup(
     name="vllm-mindspore",
@@ -144,9 +140,9 @@ setup(
     packages=find_packages(),
     python_requires=">=3.9",
     install_requires=get_requirements(),
-    # entry_points={
-    #     "console_scripts": [
-    #         "vllm_mindspore=vllm_mindspore.scripts:main",
-    #     ],
-    # },
+    entry_points={
+        "console_scripts": [
+            "vllm-mindspore=vllm_mindspore.scripts:main",
+        ],
+    },
 )

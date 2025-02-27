@@ -290,7 +290,7 @@ def is_mindformers_model_backend():
 
 def check_ready():
     if is_mindformers_model_backend():
-        necessary_envs = ("vLLM_MODEL_MEMORY_USE_GB", "MINDFORMS_MODEL_CONFIG")
+        necessary_envs = ("vLLM_MODEL_MEMORY_USE_GB", "MINDFORMERS_MODEL_CONFIG")
         lost_envs = [env_item for env_item in necessary_envs if not os.getenv(env_item)]
 
         if lost_envs:
@@ -302,3 +302,20 @@ def check_ready():
         import mindspore as ms
 
         ms.set_context(mode=0, device_target="Ascend", max_call_depth=10000)
+
+
+def cal_block_num(cache_config, model_config, parallel_config):
+    from vllm.worker.cache_engine import CacheEngine
+
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
+    _, total_gpu_memory = torch.cuda.mem_get_info()
+    memory_can_use = total_gpu_memory * cache_config.gpu_memory_utilization
+
+    model_use_memory_b = int(os.getenv("vLLM_MODEL_MEMORY_USE_GB")) * 1024 * 1024 * 1024
+    available_cache_memory = memory_can_use - model_use_memory_b
+    cache_block_size = CacheEngine.get_cache_block_size(
+        cache_config, model_config, parallel_config
+    )
+    num_gpu_blocks = int(available_cache_memory // cache_block_size)
+    return num_gpu_blocks

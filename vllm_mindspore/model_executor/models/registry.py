@@ -34,7 +34,7 @@ _MINDSPORE_MODELS = {
 }
 
 _MINDFORMERS_MODELS = {
-    "QWen2ForCausalLM": ("qwen2", "QWen2ForCausalLM"),
+    "Qwen2ForCausalLM": ("qwen2", "Qwen2ForCausalLM"),
     "DeepseekV3ForCausalLM": ("deepseek_v3", "DeepseekV3ForCausalLM"),
 }
 

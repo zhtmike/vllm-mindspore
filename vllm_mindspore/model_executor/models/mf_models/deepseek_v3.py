@@ -44,6 +44,7 @@ from research.deepseek3.deepseek3_model import (
 
 from vllm_mindspore.model_executor.layers.sampler import get_sampler
 from vllm_mindspore.model_executor.models.model_base import MsModelBase
+from vllm_mindspore.utils import cal_block_num
 
 import mindspore as ms
 from mindspore import Tensor, JitConfig, Model
@@ -86,8 +87,8 @@ class DeepseekV3ForCausalLM(MsModelBase):
             vllm_config=vllm_config, prefix=prefix
         )
 
-        self.mf_config = MindFormerConfig(os.getenv("MINDFORMS_MODEL_CONFIG"))
-        build_context(self.mf_config)
+        self.mf_config = MindFormerConfig(os.getenv("MINDFORMERS_MODEL_CONFIG"))
+        build_context(self.mf_config, is_set_ms_ctx=False, is_init_ms=False)
         build_parallel_config(self.mf_config)
         self.mf_config.model.model_config.parallel_config = (
             self.mf_config.parallel_config
@@ -98,7 +99,7 @@ class DeepseekV3ForCausalLM(MsModelBase):
         self.mf_config.model.model_config.parallel_config.pipeline_stage = 1
 
         self.mf_model_config = DeepseekV3Config_MF(**self.mf_config.model.model_config)
-        self.mf_model_config.num_blocks = self.config.num_blocks
+        self.mf_model_config.num_blocks = cal_block_num(self.cache_config, self.model_config, self.parallel_config)
         if self.mf_config.moe_config:
             self.mf_model_config.moe_config = self.mf_config.moe_config
 
@@ -117,8 +118,8 @@ class DeepseekV3ForCausalLM(MsModelBase):
         if self.mf_kvcaches_init:
             return
 
-        for i in range(self.model_config.num_layers):
-            k_cache = kv_caches[i]
+        for i in range(self.mf_model_config.num_layers):
+            k_cache = kv_caches[i][0]
             mf_k_cache, _ = self.network.kvcache(i)
 
             mf_k_cache.set_device_address(
@@ -148,8 +149,8 @@ class DeepseekV3ForCausalLM(MsModelBase):
         )
         model_inputs["block_tables"] = _pad_block_table(
             attn_metadata.block_tables,
-            self.model_config.seq_length,
-            self.model_config.block_size,
+            self.mf_model_config.seq_length,
+            self.mf_model_config.block_size,
         )
         model_inputs["slot_mapping"] = attn_metadata.slot_mapping
 

@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 def env_setup():
     default_env_dict = {
+        "USE_TORCH": "FALSE",
+        "USE_TF": "FALSE",
         "RUN_MODE": "prefict",
         "CUSTOM_MATMUL_SHUFFLE": "on",
         "HCCL_DETERMINISTIC": "false",

@@ -38,3 +38,7 @@ def get_head_size(self) -> int:
         return self.hf_text_config.head_dim
     # FIXME(woosuk): This may not be true for all models.
     return self.hf_text_config.hidden_size // self.hf_text_config.num_attention_heads
+
+def _verify_quantization(self) -> None:
+    # Donnot verify now.
+    return

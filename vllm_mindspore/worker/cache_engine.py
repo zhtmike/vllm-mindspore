@@ -56,9 +56,9 @@ def ms_allocate_kv_cache(
     for _ in range(self.num_attention_layers):
         device_type = "CPU" if device == "cpu" else "Ascend"
         current_cache = []
-        for i in kv_cache_shape[0]:
+        for i in range(kv_cache_shape[0]):
             cache_blocks = create_block(
-                kv_cache_shape[i:], self.dtype, device=device_type
+                kv_cache_shape[1:], self.dtype, device=device_type
             )
             current_cache.append(mutable(cache_blocks))
         kv_cache.append(mutable(tuple(current_cache)))

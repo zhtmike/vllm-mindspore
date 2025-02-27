@@ -119,10 +119,12 @@ from vllm_mindspore.worker.cache_engine import (
     ms_allocate_kv_cache,
     ms_swap_in,
     ms_swap_out,
+    cache_engine_init
 )
 
 import vllm.worker.cache_engine
 
+vllm.worker.cache_engine.CacheEngine.__init__ = cache_engine_init
 vllm.worker.cache_engine.CacheEngine._allocate_kv_cache = ms_allocate_kv_cache
 vllm.worker.cache_engine.CacheEngine.swap_in = ms_swap_in
 vllm.worker.cache_engine.CacheEngine.swap_out = ms_swap_out
@@ -135,10 +137,14 @@ vllm.model_executor.model_loader.loader.safetensors_weights_iterator = (
     safetensors_weights_iterator
 )
 
-from vllm_mindspore.worker.worker import _warm_up_model
+from vllm_mindspore.worker.worker import (
+    _warm_up_model,
+    determine_num_available_blocks,
+)
 from vllm.worker.worker import Worker
 
 Worker._warm_up_model = _warm_up_model
+Worker.determine_num_available_blocks = determine_num_available_blocks
 
 from vllm_mindspore.worker.model_runner import _get_cuda_graph_pad_size, profile_run
 
@@ -163,3 +169,28 @@ from vllm_mindspore.executor.multiproc_worker_utils import (
 from vllm.executor.multiproc_worker_utils import get_mp_context
 
 vllm.executor.multiproc_worker_utils.get_mp_context = ms_get_mp_context
+
+from vllm_mindspore.executor.ray_gpu_executor import (
+    ms_init_workers_ray,
+    initialize_ray_cluster,
+)
+
+from vllm.executor.ray_gpu_executor import RayGPUExecutor
+
+RayGPUExecutor._init_workers_ray = ms_init_workers_ray
+
+vllm.executor.ray_utils.initialize_ray_cluster = initialize_ray_cluster
+
+import vllm.engine.llm_engine
+import vllm.engine.async_llm_engine
+
+vllm.engine.llm_engine.initialize_ray_cluster = initialize_ray_cluster
+vllm.engine.async_llm_engine.initialize_ray_cluster = initialize_ray_cluster
+
+
+from .config import get_head_size
+vllm.config.ModelConfig.get_head_size = get_head_size
+
+from .utils import check_ready
+
+check_ready()

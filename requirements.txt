@@ -1,3 +1,5 @@
 setuptools_scm
 ml_dtypes
+ray
 mindspore >= 2.5.0
+mindformers

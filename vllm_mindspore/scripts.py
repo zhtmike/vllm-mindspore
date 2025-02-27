@@ -25,16 +25,19 @@ def env_setup():
     default_env_dict = {
         "RUN_MODE": "prefict",
         "CUSTOM_MATMUL_SHUFFLE": "on",
-        "HCCL_DETERMINISTIC": "true",
-        "ASCEND_LAUNCH_BLOCKING": "1",
-        "GRAPH_OP_RUN": "1",
-        "MS_ENABLE_INTERNAL_KERNELS": "on",
+        "HCCL_DETERMINISTIC": "false",
+        "ASCEND_LAUNCH_BLOCKING": "0",
+        "TE_PARALLEL_COMPILER": "0",
+        "LCCL_DETERMINISTIC": "0",
+        "MS_ENABLE_GRACEFUL_EXIT": "0",
+        "MS_ALLOC_CONF": "enable_vmm:False",
+        "CPU_AFFINIITY": "True",
         "MS_ENABLE_INTERNAL_BOOST": "on",
-        "MS_INTERNAL_DISABLE_CUSTOM_KERNEL_LIST": "RmsNorm",
-        "MS_DISABLE_INTERNAL_KERNELS_LIST": "Cast,SiLU,NotEqual",
         "MS_ENABLE_LCCL": "off",
-        "MS_ENABLE_HCCL": "on",
-        "MS_SUBMODULE_LOG_v": "{DISTRIBUTED: 3}",
+        "HCCL_EXEC_TIMEOUT": "7200",
+        "DEVICE_NUM_PER_NODE": "16",
+        "HCCL_OP_EXPANSION_MODE": "AIV",
+        "MS_JIT_MODULES": "vllm_mindspore,research"
     }
 
     for key, value in default_env_dict.items():

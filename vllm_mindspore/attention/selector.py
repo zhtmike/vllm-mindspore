@@ -40,8 +40,12 @@ def which_attn_to_use(
     block_size: int,
     is_attention_free: bool,
     use_v1: bool = False,
-) -> _Backend:
+    use_mla: bool = False,
+):
     """Returns which flash attention backend to use."""
+    if use_mla:
+        return "MLA_ATTN"
+
     selected_backend = _Backend.FLASH_ATTN
 
     if is_attention_free:
@@ -71,6 +75,7 @@ def _cached_get_attn_backend(
     is_attention_free: bool,
     is_blocksparse: bool = False,
     use_v1: bool = False,
+    use_mla: bool = False,
 ) -> Type[AttentionBackend]:
     if is_blocksparse:
         logger.warning(
@@ -78,7 +83,7 @@ def _cached_get_attn_backend(
         )
 
     backend = which_attn_to_use(
-        head_size, dtype, kv_cache_dtype, block_size, is_attention_free, use_v1
+        head_size, dtype, kv_cache_dtype, block_size, is_attention_free, use_v1, use_mla
     )
     if backend == _Backend.FLASH_ATTN:
         logger.info("Using Flash Attention backend.")
@@ -87,6 +92,11 @@ def _cached_get_attn_backend(
         )
 
         return MsAttentionBackend
+    elif backend == "MLA_ATTN":
+        logger.info("Using ML Attention backend.")
+        from vllm_mindspore.attention.backends.ms_attn import MLABackend
+
+        return MLABackend
     else:
         raise ValueError("Invalid attention backend.")
 
@@ -98,6 +108,7 @@ def get_ms_attn_backend(
     block_size: int,
     is_attention_free: bool,
     is_blocksparse: bool = False,
+    use_mla: bool = False,
 ) -> Type[AttentionBackend]:
     """Selects which attention backend to use and lazily imports it."""
     # Accessing envs.* behind an @lru_cache decorator can cause the wrong
@@ -112,4 +123,5 @@ def get_ms_attn_backend(
         is_attention_free=is_attention_free,
         is_blocksparse=is_blocksparse,
         use_v1=envs.VLLM_USE_V1,
+        use_mla=use_mla,
     )

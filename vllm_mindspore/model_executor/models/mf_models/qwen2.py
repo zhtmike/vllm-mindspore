@@ -97,6 +97,7 @@ class Qwen2ForCausalLM(MsModelBase):
         self.mf_model_config = LlamaConfig_MF(**self.mf_config.model.model_config)
         # Cannot get num_gpu_blocks from cache config now, calculate one first.
         self.mf_model_config.num_blocks = cal_block_num(self.cache_config, self.model_config, self.parallel_config)
+        self.mf_model_config.block_size = self.cache_config.block_size
         if self.mf_config.moe_config:
             self.mf_model_config.moe_config = self.mf_config.moe_config
 

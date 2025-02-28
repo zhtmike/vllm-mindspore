@@ -100,6 +100,7 @@ class DeepseekV3ForCausalLM(MsModelBase):
 
         self.mf_model_config = DeepseekV3Config_MF(**self.mf_config.model.model_config)
         self.mf_model_config.num_blocks = cal_block_num(self.cache_config, self.model_config, self.parallel_config)
+        self.mf_model_config.block_size = self.cache_config.block_size
         if self.mf_config.moe_config:
             self.mf_model_config.moe_config = self.mf_config.moe_config
 

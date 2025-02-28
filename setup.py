@@ -140,9 +140,4 @@ setup(
     packages=find_packages(),
     python_requires=">=3.9",
     install_requires=get_requirements(),
-    entry_points={
-        "console_scripts": [
-            "vllm-mindspore=vllm_mindspore.scripts:main",
-        ],
-    },
 )

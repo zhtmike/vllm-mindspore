@@ -15,7 +15,7 @@
 # limitations under the License.
 # ============================================================================
 
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Type, Union
 
 if TYPE_CHECKING:
     from transformers import LlamaConfig
@@ -55,16 +55,15 @@ from vllm.sequence import IntermediateTensors
 from vllm.attention import AttentionMetadata
 from vllm.model_executor.models.interfaces import SupportsPP
 
-import mindspore as ms
-from mindspore import mint
-from mindspore import Tensor
+from mindspore import Tensor, mint, jit, nn
+from mindspore import dtype as mstype
 
 
 def default_weight_loader(param, loaded_weight) -> None:
     param.set_data(loaded_weight)
 
 
-class LlamaMLP(ms.nn.Cell):
+class LlamaMLP(nn.Cell):
     def __init__(
         self,
         hidden_size: int,
@@ -96,6 +95,7 @@ class LlamaMLP(ms.nn.Cell):
             )
         self.act_fn = SiluAndMul()
 
+    @jit
     def construct(self, x):
         x, _ = self.gate_up_proj(x)
         x = self.act_fn(x)
@@ -103,7 +103,7 @@ class LlamaMLP(ms.nn.Cell):
         return x
 
 
-class LlamaAttention(ms.nn.Cell):
+class LlamaAttention(nn.Cell):
     def __init__(
         self,
         config: LlamaConfig,
@@ -196,23 +196,32 @@ class LlamaAttention(ms.nn.Cell):
             per_layer_sliding_window=sliding_window,
             prefix=f"{prefix}.attn",
         )
+        self.attn_mask = mint.triu(mint.ones(size=(128, 128), dtype=mstype.float16), 1) * -10000.0
 
+    @jit
     def construct(
         self,
-        positions,
-        hidden_states,
-        kv_cache,
-        attn_metadata,
-    ):
+        positions: Tensor,
+        hidden_states: Tensor,
+        kv_cache: Tuple[Tensor, Tensor],
+        # attn_metadata: AttentionMetadata,
+        num_prefill_tokens: int,
+        num_decode_tokens: int,
+        slot_mapping: Tensor,
+        batch_valid_length: Tuple[int],
+        context_lens: Tensor,
+        block_tables: Tensor,
+    ) -> Tensor:
         qkv, _ = self.qkv_proj(hidden_states)
-        q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], axis=-1)
-        q, k = self.rotary_emb(positions, q, k)
-        attn_output = self.attn(q, k, v, kv_cache, attn_metadata)
+        q, k, v = mint.split(qkv, (self.q_size, self.kv_size, self.kv_size), -1)
+        q, k = self.rotary_emb(positions, q, k, context_lens, num_prefill_tokens)
+        attn_output = self.attn(q, k, v, kv_cache, num_prefill_tokens, num_decode_tokens,
+                                slot_mapping, batch_valid_length, context_lens, block_tables, self.attn_mask)
         output, _ = self.o_proj(attn_output)
         return output
 
 
-class LlamaDecoderLayer(ms.nn.Cell):
+class LlamaDecoderLayer(nn.Cell):
     def __init__(
         self,
         config: LlamaConfig,
@@ -264,14 +273,21 @@ class LlamaDecoderLayer(ms.nn.Cell):
             config.hidden_size, eps=config.rms_norm_eps
         )
 
+    @jit
     def construct(
         self,
-        positions,
-        hidden_states,
-        kv_cache,
-        attn_metadata: AttentionMetadata,
-        residual,
-    ):
+        positions: Tensor,
+        hidden_states: Tensor,
+        kv_cache: Tuple[Tensor, Tensor],
+        # attn_metadata: AttentionMetadata,
+        num_prefill_tokens: int,
+        num_decode_tokens: int,
+        slot_mapping: Tensor,
+        batch_valid_length: Tuple[int],
+        context_lens: Tensor,
+        block_tables: Tensor,
+        residual: Optional[Tensor],
+    ) -> Tuple[Tensor, Tensor]:
         # Self Attention
         if residual is None:
             residual = hidden_states
@@ -280,10 +296,15 @@ class LlamaDecoderLayer(ms.nn.Cell):
             hidden_states, residual = self.input_layernorm(hidden_states, residual)
 
         hidden_states = self.self_attn(
-            positions=positions,
-            hidden_states=hidden_states,
-            kv_cache=kv_cache,
-            attn_metadata=attn_metadata,
+            positions,
+            hidden_states,
+            kv_cache,
+            num_prefill_tokens,
+            num_decode_tokens,
+            slot_mapping,
+            batch_valid_length,
+            context_lens,
+            block_tables
         )
 
         # Fully Connected
@@ -292,7 +313,7 @@ class LlamaDecoderLayer(ms.nn.Cell):
         return hidden_states, residual
 
 
-class LlamaModel(ms.nn.Cell):
+class LlamaModel(nn.Cell):
     SUPPORT_LORA = False
     SUPPORT_PP = False
 
@@ -353,16 +374,22 @@ class LlamaModel(ms.nn.Cell):
     def get_input_embeddings(self, input_ids: Tensor) -> Tensor:
         return self.embed_tokens(input_ids)
 
-    # NOTE: vllm传下来的input_ids是多batch的token拉平的， 模型需要这种形式的输入。
+    @jit
     def construct(
         self,
         input_ids: Optional[Tensor],
         positions: Tensor,
-        kv_caches: List[Tensor],
-        attn_metadata: AttentionMetadata,
-        intermediate_tensors=None,
+        kv_caches: List[Tuple[Tensor, Tensor]],
+        # attn_metadata: AttentionMetadata,
+        num_prefill_tokens: int,
+        num_decode_tokens: int,
+        slot_mapping: Tensor,
+        batch_valid_length: Tuple[int],
+        context_lens: Tensor,
+        block_tables: Tensor,
+        intermediate_tensors: Optional[IntermediateTensors] = None,
         inputs_embeds: Optional[Tensor] = None,
-    ):
+    ) -> Union[Tensor, IntermediateTensors]:
         if get_pp_group().is_first_rank:
             if inputs_embeds is not None:
                 hidden_states = inputs_embeds
@@ -380,8 +407,13 @@ class LlamaModel(ms.nn.Cell):
                 positions,
                 hidden_states,
                 kv_caches[i - self.start_layer],
-                attn_metadata,
-                residual,
+                num_prefill_tokens,
+                num_decode_tokens,
+                slot_mapping,
+                batch_valid_length,
+                context_lens,
+                block_tables,
+                residual
             )
 
         if not get_pp_group().is_last_rank:
@@ -478,6 +510,8 @@ class LlamaForCausalLM(MsModelBase, SupportsPP):
 
         self.set_modules({"model": self.model, "lm_head": self.lm_head})
 
+        self.set_model_inputs()
+
     def tie_lmhead_weights(self):
         self.lm_head = self.lm_head.tie_weights(self.model.embed_tokens)
 
@@ -490,14 +524,20 @@ class LlamaForCausalLM(MsModelBase, SupportsPP):
         intermediate_tensors=None,
         inputs_embeds=None,
     ):
-        model_output = self.model(
-            input_ids,
-            positions,
-            kv_caches,
-            attn_metadata,
-            intermediate_tensors,
-            inputs_embeds,
-        )
+        if attn_metadata.num_prefill_tokens > 0:
+            input_ids = input_ids.expand_dims(0)
+        if attn_metadata.num_decode_tokens > 0:
+            input_ids = input_ids.expand_dims(1)
+        model_output = self.model(input_ids,
+                                  positions,
+                                  kv_caches,
+                                  **dict(attn_metadata),
+                                  intermediate_tensors=intermediate_tensors,
+                                  inputs_embeds=inputs_embeds)
+        if attn_metadata.num_prefill_tokens > 0:
+            model_output = model_output.squeeze(0)
+        if attn_metadata.num_decode_tokens > 0:
+            model_output = model_output.squeeze(1)
         return model_output
 
     def load_weights(self, weights: Iterable[Tuple[str, Tensor]]) -> Set[str]:

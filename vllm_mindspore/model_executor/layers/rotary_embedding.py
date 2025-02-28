@@ -183,12 +183,9 @@ def get_rope(
     base: int,
     is_neox_style: bool = True,
     rope_scaling: Optional[Dict[str, Any]] = None,
-    dtype=None,
+    dtype: Optional[Any] = mstype.float16,
     partial_rotary_factor: float = 1.0,
 ) -> InferRotaryEmbedding:
-    if dtype is None:
-        dtype = mstype.bfloat16
-
     if rope_scaling is not None:
         # Transforms every value that is a list into a tuple for caching calls
         rope_scaling_tuple = {

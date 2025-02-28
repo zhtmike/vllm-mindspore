@@ -295,6 +295,8 @@ def is_mindformers_model_backend():
 
 
 def check_ready():
+    from mindspore import set_context
+    set_context(jit_config={"jit_level": "O0", "infer_boost": "on"})  # Common environment variables of predict.
     if is_mindformers_model_backend():
         logger.info("Run with Mindformers backend!")
         necessary_envs = ("vLLM_MODEL_MEMORY_USE_GB", "MINDFORMERS_MODEL_CONFIG")
@@ -306,9 +308,7 @@ def check_ready():
                 % str(lost_envs)
             )
 
-        import mindspore as ms
-
-        ms.set_context(mode=0, device_target="Ascend", max_call_depth=10000)
+        set_context(mode=0, device_target="Ascend", max_call_depth=10000)
     else:
         logger.info("Run with native model backend!")
 

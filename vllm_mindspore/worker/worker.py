@@ -81,7 +81,7 @@ def determine_num_available_blocks(self) -> Tuple[int, int]:
             self.model_runner.profile_run()
             torch.cuda.synchronize()
 
-        self.__Worker_assert_memory_footprint_increased_during_profiling()
+        self._assert_memory_footprint_increased_during_profiling()
 
         memory_use_for_model_run = result.non_kv_cache_memory_in_bytes
 

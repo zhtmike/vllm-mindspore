@@ -36,6 +36,7 @@ from mindformers.core.parallel_config import build_parallel_config
 
 from mindformers.models.llama import LlamaConfig as LlamaConfig_MF
 from mindformers.trainer import BaseTrainer
+from mindformers.tools.utils import set_output_path, set_stratery_save_path
 from research.qwen2_5.infer.qwen2_5 import ParallelQwenForCausalLM as ParallelQwenForCausalLM_MF
 
 from vllm_mindspore.model_executor.layers.sampler import get_sampler
@@ -105,6 +106,8 @@ class Qwen2ForCausalLM(MsModelBase):
             jit_level="O0", infer_boost="on"
         ).jit_config_dict
 
+        set_output_path(self.mf_config.output_dir)
+        set_stratery_save_path(self.mf_config.parallel)
         # update safetensor path
         ms_safetensors_path = BaseTrainer._get_load_path_after_hf_convert(
             self.mf_config, self.network

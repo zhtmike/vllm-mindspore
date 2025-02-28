@@ -152,6 +152,7 @@ class Qwen2Attention(nn.Cell):
             prefix=f"{prefix}.attn",
             attn_type=attn_type
         )
+        self.attn_mask = mint.triu(mint.ones(size=(128, 128), dtype=mstype.bfloat16), 1)
 
     @jit
     def construct(
@@ -171,7 +172,7 @@ class Qwen2Attention(nn.Cell):
         q, k, v = mint.split(qkv, (self.q_size, self.kv_size, self.kv_size), -1)
         q, k = self.rotary_emb(positions, q, k, context_lens, num_prefill_tokens)
         attn_output = self.attn(q, k, v, kv_cache, num_prefill_tokens, num_decode_tokens,
-                                slot_mapping, batch_valid_length, context_lens, block_tables)
+                                slot_mapping, batch_valid_length, context_lens, block_tables, self.attn_mask)
         output, _ = self.o_proj(attn_output)
         return output
 

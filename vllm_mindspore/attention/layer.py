@@ -160,6 +160,7 @@ class Attention(nn.Cell):
         batch_valid_length: Tuple[int],
         context_lens: Tensor,
         block_tables: Tensor,
+        attn_mask: Tensor,
     ) -> Tensor:
         """Attention foward, support MHA and GQA.
 
@@ -177,7 +178,7 @@ class Attention(nn.Cell):
         cache_out = self.reshape_and_cache(key, value, key_cache, value_cache, slot_mapping)
         query = ops.depend(query, cache_out)
         if num_prefill_tokens > 0:
-            output = self._run_prefill_forward(query, key, value, batch_valid_length, batch_valid_length)
+            output = self._run_prefill_forward(query, key, value, attn_mask, batch_valid_length, batch_valid_length)
         if num_decode_tokens > 0:
             output = self._run_decode_forward(query, key_cache, value_cache, block_tables, context_lens)
         return output
@@ -187,6 +188,7 @@ class Attention(nn.Cell):
         query: Tensor,
         key: Tensor,
         value: Tensor,
+        attn_mask: Tensor,
         actual_seq_qlen: Tuple[int],
         actual_seq_kvlen: Tuple[int],
     ) -> Tensor:
@@ -200,11 +202,9 @@ class Attention(nn.Cell):
             actual_seq_kvlen: shape = [batch_size, ]
         NOTE: Currently `PyNative` mode does not support operations in "TH" form, so it will be converted to "BSH" form.
         """
-        batch_size = query.shape[0]
         query = query.view(-1, self.hidden_size_per_partition)
         key = key.view(-1, self.kv_hidden_size_per_partition)
         value = value.view(-1, self.kv_hidden_size_per_partition)
-        attn_mask = mint.triu(mint.ones(size=(128, 128), dtype=query.dtype), 1)
         _, _, _, output = self.flash_attention(query,
                                                key,
                                                value,
@@ -215,7 +215,7 @@ class Attention(nn.Cell):
                                                None,
                                                actual_seq_qlen,
                                                actual_seq_kvlen)
-        output = output.view(batch_size, -1, self.hidden_size_per_partition)
+        output = output.view(1, -1, self.hidden_size_per_partition)
         return output
 
     def _run_decode_forward(

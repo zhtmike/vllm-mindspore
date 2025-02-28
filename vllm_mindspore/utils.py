@@ -252,12 +252,13 @@ def ascend_device_count_stateless() -> List[str]:
         try:
             res = visible_device_str.split(",")
         except Exception as e:
-            logger.warning(
-                'Error argument(%s) of environ "ASCEND_RT_VISIBLE_DEVICES"'
+            logger.error('Cannot parse "ASCEND_RT_VISIBLE_DEVICES" for: %s!' % str(e))
+            raise ValueError(
+                'Error argument(%s) of environ "ASCEND_RT_VISIBLE_DEVICES"!'
                 % visible_device_str
             )
 
-        return res
+        return len(res)
 
     import re
     import subprocess
@@ -268,12 +269,17 @@ def ascend_device_count_stateless() -> List[str]:
         output,
     )
 
-    avl_devices = [str(i) for i, stat in enumerate(res) if stat == "OK"]
+    avl_devices = []
+    for i, stat in enumerate(res):
+        if stat != "OK":
+            logger.warning("Device %d is not ok, status is %s!" % (i, stat))
+        else:
+            avl_devices.append(str(i))
     visible_device_str = ",".join(avl_devices)
     os.environ["ASCEND_RT_VISIBLE_DEVICES"] = visible_device_str
     logger.info('Set environ "ASCEND_RT_VISIBLE_DEVICES" as %s' % visible_device_str)
 
-    return len(res)
+    return len(avl_devices)
 
 
 def ascend_is_initialized():
@@ -290,6 +296,7 @@ def is_mindformers_model_backend():
 
 def check_ready():
     if is_mindformers_model_backend():
+        logger.info("Run with Mindformers backend!")
         necessary_envs = ("vLLM_MODEL_MEMORY_USE_GB", "MINDFORMERS_MODEL_CONFIG")
         lost_envs = [env_item for env_item in necessary_envs if not os.getenv(env_item)]
 
@@ -302,6 +309,8 @@ def check_ready():
         import mindspore as ms
 
         ms.set_context(mode=0, device_target="Ascend", max_call_depth=10000)
+    else:
+        logger.info("Run with native model backend!")
 
 
 def cal_block_num(cache_config, model_config, parallel_config):

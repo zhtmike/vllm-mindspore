@@ -30,7 +30,7 @@ import torch
 import torch.nn as nn
 
 import vllm.envs as envs
-from vllm.model_executor.layers.utils import apply_penalties
+from vllm_mindspore.model_executor.layers.utils import apply_penalties
 from vllm.sampling_params import SamplingType
 from vllm.sequence import (
     VLLM_INVALID_TOKEN_ID,
@@ -427,7 +427,6 @@ def _apply_top_k_top_p(
     # top_k_mask = logits_sort.gather(1, top_k_mask.unsqueeze(dim=1))
     top_k_mask = logits_sort < top_k_mask
     logits_sort.masked_fill(top_k_mask, -float("inf"))
-    logits_sort.masked_fill(top_k_mask, -float("inf"))
 
     # Apply top-p.
     probs_sort = logits_sort.softmax(axis=-1)
@@ -512,7 +511,6 @@ def _random_sample(
         seq_group has do_sample=False, tuple contains ([], [])
     """
     # Find the maximum n value of the prompt phase requests.
-    random_samples = random_samples.cpu()
     sample_idx = 0
     results: SampleResultType = []
     for seq_group in selected_seq_groups:

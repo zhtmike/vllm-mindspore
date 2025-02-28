@@ -30,7 +30,7 @@ from mindspore import dtype as mstype
 from vllm_mindspore.utils import STR_DTYPE_TO_MS_DTYPE
 
 
-class MsModelBase(nn.Cell):
+class MsModelBase():
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
         super(MsModelBase, self).__init__()
         config = vllm_config.model_config.hf_config

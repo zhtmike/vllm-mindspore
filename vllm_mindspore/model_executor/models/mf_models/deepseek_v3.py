@@ -105,6 +105,25 @@ class DeepseekV3ForCausalLM(MsModelBase):
 
         # Initital network
         self.network = DeepseekV3ForCausalLM_MF(self.mf_model_config)
+
+        # quant
+        if self.mf_model_config.quantization_config:
+            from mindspore_gs.ptq.ptq import PTQ
+            from mindspore_gs.ptq.ptq_config import PTQMode, PTQConfig, OutliersSuppressionType, PrecisionRecovery, QuantGranularity
+            from mindspore_gs.common import BackendTarget
+            from mindspore.common import dtype as msdtype
+            cfg = PTQConfig(mode=PTQMode.DEPLOY,
+                            backend=BackendTarget.ASCEND,
+                            weight_quant_dtype=msdtype.int8,
+                            act_quant_dtype=msdtype.int8,
+                            outliers_suppression=OutliersSuppressionType.NONE,
+                            opname_blacklist=['lkv2kv', 'lm_head', '61'],
+                            act_quant_granularity=QuantGranularity.PER_TENSOR,
+                            weight_quant_granularity=QuantGranularity.PER_CHANNEL)
+            ptq = PTQ(config=cfg)
+            ptq.apply(self.network)
+            ptq.convert(self.network)
+
         self.network._jit_config_dict = JitConfig(
             jit_level="O0", infer_boost="on"
         ).jit_config_dict

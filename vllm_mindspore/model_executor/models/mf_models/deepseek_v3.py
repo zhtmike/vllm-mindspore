@@ -38,7 +38,7 @@ from mindformers.trainer.utils import transform_and_load_checkpoint
 from research.deepseek3.deepseek3_config import (
     DeepseekV3Config as DeepseekV3Config_MF,
 )
-from research.deepseek3.deepseek3_model import (
+from research.deepseek3.deepseek3 import (
     DeepseekV3ForCausalLM as DeepseekV3ForCausalLM_MF,
 )
 

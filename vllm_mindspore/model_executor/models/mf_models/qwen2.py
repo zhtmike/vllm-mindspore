@@ -36,7 +36,7 @@ from mindformers.core.parallel_config import build_parallel_config
 
 from mindformers.models.llama import LlamaConfig as LlamaConfig_MF
 from mindformers.trainer import BaseTrainer
-from mindformers.tools.utils import set_output_path, set_stratery_save_path
+from mindformers.tools.utils import set_output_path, set_strategy_save_path
 from research.qwen2_5.infer.qwen2_5 import ParallelQwenForCausalLM as ParallelQwenForCausalLM_MF
 
 from vllm_mindspore.model_executor.layers.sampler import get_sampler

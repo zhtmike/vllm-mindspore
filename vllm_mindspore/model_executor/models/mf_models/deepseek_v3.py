@@ -108,7 +108,7 @@ class DeepseekV3ForCausalLM(MsModelBase):
         self.network = DeepseekV3ForCausalLM_MF(self.mf_model_config)
 
         # quant
-        if self.mf_model_config.quantization_config:
+        if hasattr(self.mf_model_config, "quantization_config") and self.mf_model_config.quantization_config:        
             from mindspore_gs.ptq.ptq import PTQ
             from mindspore_gs.ptq.ptq_config import PTQMode, PTQConfig, OutliersSuppressionType, PrecisionRecovery, QuantGranularity
             from mindspore_gs.common import BackendTarget

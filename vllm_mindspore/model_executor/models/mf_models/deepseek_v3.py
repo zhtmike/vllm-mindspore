@@ -177,11 +177,11 @@ class DeepseekV3ForCausalLM(MsModelBase):
         if is_prefill:
             self.network.phase = "prefill"
             self.network.add_flags_custom(is_first_iteration=True)
-        else:
+            self.logits = self.network(**model_inputs)
             self.network.phase = "increment"
             self.network.add_flags_custom(is_first_iteration=False)
-
-        self.logits = self.network(**model_inputs)
+        else:
+            self.logits = self.network(**model_inputs)
 
         return None
 

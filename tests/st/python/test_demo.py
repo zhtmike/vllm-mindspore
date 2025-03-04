@@ -21,6 +21,7 @@ class TestDemo:
     """
     Test Demo for ST.
     """
+
     @pytest.mark.level0
     @pytest.mark.platform_arm_ascend910b_training
     @pytest.mark.env_single
@@ -28,6 +29,8 @@ class TestDemo:
         """
         test case aaa
         """
+        # pylint: disable=W0611
+        import vllm_mindspore
         from vllm import LLM, SamplingParams
 
         # Sample prompts.

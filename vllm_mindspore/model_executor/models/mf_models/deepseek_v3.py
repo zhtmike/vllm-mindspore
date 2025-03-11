@@ -45,7 +45,7 @@ from research.deepseek3.deepseek3 import (
 
 from vllm_mindspore.model_executor.layers.sampler import get_sampler
 from vllm_mindspore.model_executor.models.model_base import MsModelBase
-from vllm_mindspore.utils import cal_block_num
+from vllm_mindspore.utils import calc_block_num
 
 import mindspore as ms
 from mindspore import Tensor, JitConfig, Model
@@ -101,7 +101,7 @@ class DeepseekV3ForCausalLM(MsModelBase):
         self.mf_config.load_checkpoint = self.get_model_path()
 
         self.mf_model_config = DeepseekV3Config_MF(**self.mf_config.model.model_config)
-        self.mf_model_config.num_blocks = cal_block_num(self.cache_config, self.model_config, self.parallel_config)
+        self.mf_model_config.num_blocks = calc_block_num(self.cache_config, self.model_config, self.parallel_config)
         self.mf_model_config.block_size = self.cache_config.block_size
         if self.mf_config.moe_config:
             self.mf_model_config.moe_config = self.mf_config.moe_config
@@ -125,14 +125,6 @@ class DeepseekV3ForCausalLM(MsModelBase):
                             precision_recovery=PrecisionRecovery.NONE,
                             act_quant_granularity=QuantGranularity.PER_TENSOR,
                             weight_quant_granularity=QuantGranularity.PER_CHANNEL)
-            wo_config = PTQConfig(mode=PTQMode.DEPLOY,
-                                  backend=BackendTarget.ASCEND,
-                                  weight_quant_dtype=msdtype.int8,
-                                  act_quant_dtype=msdtype.int8,
-                                  outliers_suppression=OutliersSuppressionType.NONE,
-                                  precision_recovery=PrecisionRecovery.NONE,
-                                  act_quant_granularity=QuantGranularity.PER_TENSOR,
-                                  weight_quant_granularity=QuantGranularity.PER_CHANNEL)
             ffn_config = PTQConfig(mode=PTQMode.DEPLOY,
                                    backend=BackendTarget.ASCEND,
                                    weight_quant_dtype=msdtype.int8,
@@ -142,7 +134,7 @@ class DeepseekV3ForCausalLM(MsModelBase):
                                    act_quant_granularity=QuantGranularity.PER_TOKEN,
                                    weight_quant_granularity=QuantGranularity.PER_CHANNEL)
             ptq = PTQ(config=cfg,
-                      layer_policies=OrderedDict({r'.*\.wo.*':wo_config, r'.*\.feed_forward\..*':ffn_config}))
+                      layer_policies=OrderedDict({r'.*\.feed_forward\..*':ffn_config}))
             ptq.apply(self.network)
             ptq.convert(self.network)
 

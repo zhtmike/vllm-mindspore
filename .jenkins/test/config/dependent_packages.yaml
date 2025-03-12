@@ -1,5 +1,5 @@
 mindspore:
-  'https://repo.mindspore.cn/mindspore/mindspore/version/202503/20250305/br_infer_deepseek_os_20250305001023_4011166933d7e6230601ac1ad07bfe1a8329541d/'
+  'https://repo.mindspore.cn/mindspore/mindspore/version/202503/20250307/br_infer_deepseek_os_20250307004508_4011166933d7e6230601ac1ad07bfe1a8329541d/'
 
 mindformers:
   'https://repo.mindspore.cn/mindspore/mindformers/version/202503/20250303/br_infer_deepseek_os_20250303142905_569a4261552abe2984651bd31d675d76c5f51fb0_newest/'

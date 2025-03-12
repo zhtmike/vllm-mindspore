@@ -17,6 +17,7 @@
 # ============================================================================
 
 import os
+import torch
 from typing import Iterable, List, Optional, Set, Tuple, Union
 
 import numpy as np
@@ -24,8 +25,11 @@ import numpy as np
 from vllm.attention import AttentionMetadata
 from vllm.config import VllmConfig
 from vllm.model_executor.layers.sampler import SamplerOutput
+from vllm.config import CacheConfig, get_current_vllm_config
+from vllm.forward_context import ForwardContext, get_forward_context
 from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.sequence import IntermediateTensors
+from vllm.attention.backends.abstract import AttentionType
 from vllm.distributed import get_tensor_model_parallel_world_size
 from vllm.logger import init_logger
 
@@ -80,6 +84,13 @@ def _batch_seq(input_tokens, prefill):
 
     return ms.mint.reshape(input_tokens, (-1, 1)).to(ms.int32)
 
+class Fake_Attention:
+    def __init__(self):
+        self.kv_cache = [
+            torch.tensor([]) for _ in range(get_current_vllm_config(
+            ).parallel_config.pipeline_parallel_size)
+        ]
+        self.attn_type = AttentionType.DECODER
 
 class Qwen2ForCausalLM(MsModelBase):
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
@@ -122,12 +133,22 @@ class Qwen2ForCausalLM(MsModelBase):
         self.sampler = get_sampler()
         self.set_modules({"model": self.network})
 
-    def update_mf_kvcaches(self, kv_caches):
+        self.kv_caches = [Fake_Attention() for i in range(self.mf_model_config.num_layers)]
+        compilation_config = get_current_vllm_config().compilation_config
+
+        if prefix in compilation_config.static_forward_context:
+            raise ValueError(f"Duplicate layer name: {prefix}")
+        for i in range(self.mf_model_config.num_layers):
+            compilation_config.static_forward_context[str(i)] = self.kv_caches[i]
+
+    def update_mf_kvcaches(self):
         if self.mf_kvcaches_init:
             return
 
+        forward_context = get_forward_context()
         for i in range(self.mf_model_config.num_layers):
-            k_cache, v_cache = kv_caches[i]
+            k_cache = self.kv_caches[i].kv_cache[forward_context.virtual_engine][0]
+            v_cache = self.kv_caches[i].kv_cache[forward_context.virtual_engine][1]
             mf_k_cache, mf_v_cache = self.network.kvcache(i)
             mf_k_cache.set_device_address(
                 k_cache._data_ptr(), k_cache.shape, k_cache.dtype
@@ -146,7 +167,7 @@ class Qwen2ForCausalLM(MsModelBase):
         intermediate_tensors: Optional[IntermediateTensors] = None,
         inputs_embeds: Optional[Tensor] = None,
     ) -> Union[Tensor, IntermediateTensors]:
-        self.update_mf_kvcaches(kv_caches)
+        self.update_mf_kvcaches()
 
         is_prefill = True if attn_metadata.prefill_metadata else False
 

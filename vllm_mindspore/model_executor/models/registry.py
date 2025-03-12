@@ -60,32 +60,9 @@ MindSporeModelRegistry = _ModelRegistry(
 _T = TypeVar("_T")
 
 
-def _run_in_subprocess(fn: Callable[[], _T]) -> _T:
-    with tempfile.TemporaryDirectory() as tempdir:
-        output_filepath = os.path.join(tempdir, "registry_output.tmp")
-
-        # `cloudpickle` allows pickling lambda functions directly
-        input_bytes = cloudpickle.dumps((fn, output_filepath))
-
-        # cannot use `sys.executable __file__` here because the script
-        # contains relative imports
-        returned = subprocess.run(
-            [sys.executable, "-m", "vllm_mindspore.model_executor.models.registry"],
-            input=input_bytes,
-            capture_output=True,
-        )
-
-        # check if the subprocess is successful
-        try:
-            returned.check_returncode()
-        except Exception as e:
-            # wrap raised exception to provide more information
-            raise RuntimeError(
-                f"Error raised in subprocess:\n" f"{returned.stderr.decode()}"
-            ) from e
-
-        with open(output_filepath, "rb") as f:
-            return pickle.load(f)
+_SUBPROCESS_COMMAND = [
+    sys.executable, "-m", "vllm.model_executor.models.registry"
+]
 
 
 def _run() -> None:

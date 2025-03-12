@@ -20,5 +20,4 @@ import multiprocessing
 
 
 def get_mp_context():
-    # TODO(tronzhang): support spawn latter...
     return multiprocessing.get_context("fork")

@@ -128,7 +128,6 @@ def profile_run(self) -> None:
     # multiplying the list, to avoid Dynamo from treating them as
     # tensor aliasing.
 
-    # TODO(tronzhang): MindSpore's tensor view is limit now, delete this whole funtion patching latter.
     kv_cache_dtype = self.model_config.dtype if self.cache_config.cache_dtype == "auto" \
         else self.cache_config.cache_dtype
     kv_cache_dtype = STR_DTYPE_TO_TENSOR_DTYPE[kv_cache_dtype]

@@ -21,7 +21,6 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Type
 import mindspore as ms
 
-# TODO(tronzhang): Use vllm's quantization base_config.py latter.
 
 class QuantizeMethodBase(ABC):
     """Base class for different quantized methods."""
@@ -57,6 +56,11 @@ class QuantizeMethodBase(ABC):
 
 class QuantizationConfig(ABC):
     """Base class for quantization configs."""
+
+    def __init__(self):
+        super().__init__()
+        # mapping is updated by models as they initialize
+        self.packed_modules_mapping: Dict[str, List[str]] = dict()
 
     @abstractmethod
     def get_name(self) -> str:

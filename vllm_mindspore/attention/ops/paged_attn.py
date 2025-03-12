@@ -31,8 +31,6 @@ if HAS_TRITON:
 # Should be the same as PARTITION_SIZE in `paged_attention_v2_launcher`.
 _PARTITION_SIZE = 512
 
-# TODO(tronzhang): delete all not work codes.
-
 
 @dataclass
 class PagedAttentionMetadata:

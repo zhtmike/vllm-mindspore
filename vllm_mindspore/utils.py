@@ -79,18 +79,14 @@ def direct_register_custom_op(
 
 @contextlib.contextmanager
 def memory_profiling(
-    baseline_memory_in_bytes: int, weights_memory_in_bytes: int
-) -> Generator["MemoryProfilingResult", None, None]:
+        baseline_snapshot: "MemorySnapshot",
+        weights_memory: int) -> "Generator[MemoryProfilingResult, None, None]":
     """Memory profiling context manager.
-    baseline_memory_in_bytes: memory used by all the components other than
-        the current vLLM instance. It contains: memory used by other processes, memory
-        used by another vLLM instance in the same process, etc. It is usually measured
-        before the current vLLM instance initialize the device. And we assume it is
-        constant during the profiling of the current vLLM instance.
-    weights_memory_in_bytes: memory used by PyTorch when loading the model weights.
+    baseline_snapshot: the memory snapshot before the current vLLM instance.
+    weights_memory: memory used by PyTorch when loading the model weights.
         Note that, before loading the model weights, we also initialize the device
         and distributed environment, which may consume some memory. This part is not
-        included in the weights_memory_in_bytes because PyTorch does not control it.
+        included in the weights_memory because PyTorch does not control it.
 
     The memory in one GPU can be classified into 3 categories:
     1. memory used by anything other than the current vLLM instance.
@@ -125,24 +121,27 @@ def memory_profiling(
     b. 2 GiB reserved for the peak activation tensors (category 2)
     c. 1 GiB used by non-torch components (category 3)
 
-    The memory used for loading weights (a.) is directly given from the argument `weights_memory_in_bytes`.
+    The memory used for loading weights (a.) is directly given from the argument `weights_memory`.
 
-    The increase of ``torch.cuda.memory_stats()["allocated_bytes.all.peak"]` after profiling gives (b.).
+    The increase of `torch.cuda.memory_stats()["allocated_bytes.all.peak"]` during profiling gives (b.).
 
-    (c.) is tricky. We measure the total memory used in this GPU (`torch.cuda.mem_get_info()[1] - torch.cuda.mem_get_info()[0]`),
-    subtract the baseline memory, the memory used by the model weights, and diff of `torch.cuda.memory_stats()["allocated_bytes.all.current"]`.
-    """  # noqa
-    torch.cuda.reset_peak_memory_stats()
-
+    The increase of `non_torch_memory` from creating the current vLLM instance until after profiling to get (c.).
+    """ # noqa
     from vllm.utils import MemoryProfilingResult
+
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
 
     result = MemoryProfilingResult()
 
-    result.baseline_memory_in_bytes = baseline_memory_in_bytes
+    result.before_create = baseline_snapshot
     # the part of memory used for holding the model weights
-    result.weights_memory_in_bytes = weights_memory_in_bytes
+    result.weights_memory = weights_memory
 
     result.before_profile.measure()
+
+    before_torch_memory_in_bytes = torch.cuda.memory_stats()["allocated_bytes.all.current"]
 
     yield result
 
@@ -151,23 +150,14 @@ def memory_profiling(
 
     result.after_profile.measure()
 
-    diff = result.after_profile - result.before_profile
-    result.torch_peak_increase_in_bytes = diff.torch_peak_in_bytes
+    after_torch_memory_in_bytes = torch.cuda.memory_stats()["allocated_bytes.all.current"]
 
-    # For mindspore, the memory is allocated and free in memory pool, so cannot read the current used memory by `torch.cuda.mem_get_info`.
-    current_cuda_memory_bytes = result.after_profile.torch_memory_in_bytes
-    result.non_torch_increase_in_bytes = (
-        current_cuda_memory_bytes
-        - baseline_memory_in_bytes
-        - weights_memory_in_bytes
-        - diff.torch_memory_in_bytes
-    )  # noqa
-    result.profile_time = diff.timestamp
-    result.non_kv_cache_memory_in_bytes = (
-        result.non_torch_increase_in_bytes
-        + result.torch_peak_increase_in_bytes
-        + result.weights_memory_in_bytes
-    )  # noqa
+    diff_profile = result.after_profile - result.before_profile
+    diff_from_create = result.after_profile - result.before_create
+    result.torch_peak_increase = diff_profile.torch_peak
+    result.non_torch_increase = after_torch_memory_in_bytes - before_torch_memory_in_bytes
+    result.profile_time = diff_profile.timestamp
+    result.non_kv_cache_memory = result.non_torch_increase + result.torch_peak_increase + result.weights_memory  # noqa
 
 
 def _create_empty_tensor(ms_type):
@@ -300,7 +290,11 @@ def is_mindformers_model_backend():
 
 
 def check_ready():
+    import vllm.envs as envs
     from mindspore import set_context
+
+    if envs.VLLM_USE_V1:
+        raise NotImplementedError("vLLM-MindSpore does not support VLLM V1 now!")
 
     # Common environment variables of predict.
     set_context(jit_config={"jit_level": "O0", "infer_boost": "on"})

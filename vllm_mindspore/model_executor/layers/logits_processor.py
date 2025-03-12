@@ -17,12 +17,15 @@
 # ============================================================================
 """A layer that compute logits from hidden_stats."""
 import inspect
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 import mindspore.nn as nn
 from mindspore import Tensor
 from mindspore import mint
 
+import vllm.envs as envs
+from vllm.config import get_current_vllm_config
 from vllm.distributed import (
     tensor_model_parallel_all_gather,
     tensor_model_parallel_gather,
@@ -33,8 +36,11 @@ from vllm_mindspore.model_executor.layers.vocab_parallel_embedding import (
 from vllm_mindspore.model_executor.sampling_metadata import SamplingMetadata
 from vllm.platforms import current_platform
 
-# TODO(tronzhang): Use vllm's logits_processor.py latter...
 
+_logits_processor_threadpool: Optional[ThreadPoolExecutor] = None
+if envs.VLLM_LOGITS_PROCESSOR_THREADS is not None:
+    _logits_processor_threadpool = ThreadPoolExecutor(
+        envs.VLLM_LOGITS_PROCESSOR_THREADS)
 
 class LogitsProcessor(nn.Cell):
     """Process logits and apply logits processors from sampling metadata.
@@ -67,7 +73,10 @@ class LogitsProcessor(nn.Cell):
         # Soft cap the logits. Used in Gemma 2.
         self.soft_cap = soft_cap
         # Whether to use gather or all-gather to gather the logits.
-        self.use_gather = not current_platform.is_tpu()
+        parallel_config = get_current_vllm_config().parallel_config
+        self.use_gather = not current_platform.is_tpu() \
+            or envs.VLLM_USE_V1 \
+            or parallel_config.distributed_executor_backend == "external_launcher"
 
     def construct(
         self,
@@ -106,7 +115,7 @@ class LogitsProcessor(nn.Cell):
         embedding_bias: Optional[Tensor],
     ) -> Optional[Tensor]:
         # Get the logits for the next tokens.
-        logits = lm_head.linear_method.apply(
+        logits = lm_head.quant_method.apply(
             lm_head, hidden_states, bias=embedding_bias
         )
         if self.use_gather:
@@ -150,6 +159,7 @@ def _apply_logits_processors(
 ) -> Tensor:
     found_logits_processors = False
     logits_processed = 0
+    logits_row_ids_and_logits_row_futures = []
     for seq_group in sampling_metadata.seq_groups:
         seq_ids = seq_group.seq_ids
         sampling_params = seq_group.sampling_params
@@ -162,22 +172,39 @@ def _apply_logits_processors(
                 past_tokens_ids = seq_group.seq_data[seq_id].output_token_ids
                 prompt_tokens_ids = seq_group.seq_data[seq_id].prompt_token_ids
 
-                for logits_processor in logits_processors:
-                    parameters = inspect.signature(logits_processor).parameters
-                    if len(parameters) == 3:
-                        logits_row = logits_processor(
-                            prompt_tokens_ids, past_tokens_ids, logits_row
-                        )
-                    else:
-                        logits_row = logits_processor(past_tokens_ids, logits_row)
-
-                logits[logits_row_idx] = logits_row
+            if _logits_processor_threadpool is not None:
+                logits_row_ids_and_logits_row_futures.append(
+                    (logits_row_idx,
+                     _logits_processor_threadpool.submit(
+                         _apply_logits_processors_single_seq, logits_row,
+                         logits_processors, past_tokens_ids,
+                         prompt_tokens_ids)))
+            else:
+                logits[logits_row_idx] = \
+                    _apply_logits_processors_single_seq(
+                        logits_row, logits_processors, past_tokens_ids,
+                        prompt_tokens_ids)
 
         logits_processed += len(seq_group.sample_indices) + len(
             seq_group.prompt_logprob_indices
         )
+    
+    for logits_row_idx, future in logits_row_ids_and_logits_row_futures:
+        logits[logits_row_idx] = future.result()
 
     if found_logits_processors:
         # verifies that no rows in logits were missed unexpectedly
         assert logits_processed == logits.shape[0]
     return logits
+
+def _apply_logits_processors_single_seq(logits_row, logits_processors,
+                                        past_tokens_ids,
+                                        prompt_tokens_ids) -> Tensor:
+    for logits_processor in logits_processors:
+        parameters = inspect.signature(logits_processor).parameters
+        if len(parameters) == 3:
+            logits_row = logits_processor(prompt_tokens_ids, past_tokens_ids,
+                                          logits_row)
+        else:
+            logits_row = logits_processor(past_tokens_ids, logits_row)
+    return logits_row

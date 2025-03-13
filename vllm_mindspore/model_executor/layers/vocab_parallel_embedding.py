@@ -36,8 +36,6 @@ from mindspore import jit
 
 DEFAULT_VOCAB_PADDING_SIZE = 64
 
-# TODO(tronzhang): Most same as vllm's one, check latter...
-
 
 class UnquantizedEmbeddingMethod(QuantizeMethodBase):
     """Unquantized method for embeddings."""
@@ -224,26 +222,26 @@ class VocabParallelEmbedding(nn.Cell):
 
         self.embedding_dim = embedding_dim
 
-        linear_method = None
-        if quant_config is not None:
-            linear_method = quant_config.get_quant_method(self, prefix=prefix)
-        if linear_method is None:
-            linear_method = UnquantizedEmbeddingMethod()
+        quant_method = None
+        if quant_method is not None:
+            quant_method = quant_config.get_quant_method(self, prefix=prefix)
+        if quant_method is None:
+            quant_method = UnquantizedEmbeddingMethod()
 
         # If we are making an embedding layer, then our quantization linear
         # method must implement the embedding operation. If we are another
         # layer type like ParallelLMHead, this is not important.
         is_embedding_layer = type(self.__class__) is VocabParallelEmbedding
-        linear_method_implements_embedding = method_has_implemented_embedding(
-            type(linear_method)
+        quant_method_implements_embedding = method_has_implemented_embedding(
+            type(quant_method)
         )
-        if is_embedding_layer and not linear_method_implements_embedding:
+        if is_embedding_layer and not quant_method_implements_embedding:
             raise NotImplementedError(
-                f"The class {type(linear_method).__name__} must implement "
+                f"The class {type(quant_method).__name__} must implement "
                 "the 'embedding' method, see UnquantizedEmbeddingMethod."
             )
 
-        self.linear_method: QuantizeMethodBase = linear_method
+        self.quant_method: QuantizeMethodBase = quant_method
 
         if params_dtype is None:
             params_dtype = mstype.float16
@@ -264,7 +262,7 @@ class VocabParallelEmbedding(nn.Cell):
             - self.shard_indices.added_vocab_start_index
         )
 
-        self.linear_method.create_weights(
+        self.quant_method.create_weights(
             self,
             self.embedding_dim,
             [self.num_embeddings_per_partition],
@@ -328,7 +326,7 @@ class VocabParallelEmbedding(nn.Cell):
         else:
             masked_input, input_mask = input_, None
         # Get the embeddings.
-        output_parallel = self.linear_method.embedding(self, masked_input)
+        output_parallel = self.quant_method.embedding(self, masked_input)
         # Mask the output embedding.
         if self.tp_size > 1:
             output_parallel = mint.mul(output_parallel, input_mask)

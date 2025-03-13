@@ -70,15 +70,18 @@ vllm.executor.cuda_device_count_stateless = ascend_device_count_stateless
 
 from vllm_mindspore.model_executor.models.registry import (
     MindSporeModelRegistry,
-    _run_in_subprocess,
+    _SUBPROCESS_COMMAND,
 )
+
+vllm.config.ModelRegistry = MindSporeModelRegistry
 
 import vllm.model_executor
 
 vllm.model_executor.models.ModelRegistry = MindSporeModelRegistry
-vllm.config.ModelRegistry = MindSporeModelRegistry
+vllm.model_executor.models.registry._SUBPROCESS_COMMAND = _SUBPROCESS_COMMAND
 
 from vllm_mindspore.model_executor.model_loader.utils import get_ms_model_architecture
+# To patching the get_model_architecture, should import it first.
 from vllm.model_executor.model_loader import get_model_architecture
 
 vllm.model_executor.model_loader.get_model_architecture = get_ms_model_architecture
@@ -88,7 +91,6 @@ vllm.model_executor.model_loader.utils.get_model_architecture = (
 vllm.model_executor.model_loader.loader.get_model_architecture = (
     get_ms_model_architecture
 )
-vllm.model_executor.models.registry._run_in_subprocess = _run_in_subprocess
 
 from vllm_mindspore.model_executor.sampling_metadata import (
     SequenceGroupToSample,
@@ -101,12 +103,6 @@ vllm.model_executor.SamplingMetadata = SamplingMetadata
 vllm.model_executor.sampling_metadata.SequenceGroupToSample = SequenceGroupToSample
 vllm.model_executor.sampling_metadata.SamplingMetadataCache = SamplingMetadataCache
 vllm.model_executor.sampling_metadata.SamplingMetadata = SamplingMetadata
-
-from vllm_mindspore.attention.selector import get_ms_attn_backend
-
-import vllm.attention
-
-vllm.attention.get_attn_backend = get_ms_attn_backend
 
 from vllm_mindspore.worker.cache_engine import (
     ms_allocate_kv_cache,
@@ -161,6 +157,7 @@ vllm.distributed.parallel_state.init_model_parallel_group = init_model_parallel_
 from vllm_mindspore.executor.multiproc_worker_utils import (
     get_mp_context as ms_get_mp_context,
 )
+# To patching the get_mp_context, should import it first.
 from vllm.executor.multiproc_worker_utils import get_mp_context
 
 vllm.executor.multiproc_worker_utils.get_mp_context = ms_get_mp_context
@@ -170,10 +167,11 @@ from vllm_mindspore.executor.ray_gpu_executor import (
     initialize_ray_cluster,
 )
 
-from vllm.executor.ray_gpu_executor import RayGPUExecutor
+from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
-RayGPUExecutor._init_workers_ray = ms_init_workers_ray
+RayDistributedExecutor._init_workers_ray = ms_init_workers_ray
 
+vllm.executor.ray_distributed_executor.initialize_ray_cluster = initialize_ray_cluster
 vllm.executor.ray_utils.initialize_ray_cluster = initialize_ray_cluster
 
 import vllm.engine.llm_engine

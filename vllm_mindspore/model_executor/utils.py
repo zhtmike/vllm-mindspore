@@ -19,8 +19,6 @@
 from typing import Any, Dict, Optional
 from mindspore import Tensor
 
-# TODO(tronzhang): Use vllm's latter...
-
 
 def set_weight_attrs(
     weight: Tensor,

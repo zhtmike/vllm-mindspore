@@ -17,10 +17,10 @@
 # ============================================================================
 """Ascend platform."""
 
-from typing import TYPE_CHECKING, Optional
+import os
+from typing import (TYPE_CHECKING, Optional, Union, Tuple)
 
 import torch
-import os
 import mindspore as ms
 
 from vllm.platforms.interface import DeviceCapability, Platform, PlatformEnum, _Backend
@@ -35,23 +35,25 @@ logger = init_logger(__name__)
 
 
 class AscendPlatform(Platform):
-    _enum = PlatformEnum.CUDA
-    device_name: str = "cuda"
-    device_type: str = "cuda"
-    dispatch_key: str = "CUDA"
+
+    _enum = PlatformEnum.OOT
+    device_name: str = "npu"
+    device_type: str = "cuda" # To use cuda worker, executor...
+    simple_compile_backend: str = "npu"
+    ray_device_key: str = "NPU"
+    device_control_env_var: str = "ASCEND_RT_VISIBLE_DEVICES"
 
     @classmethod
-    def get_default_attn_backend(cls, selected_backend: _Backend):
-        """Get the default attention backend of a device."""
-        return _Backend.FLASH_ATTN
+    def get_device_capability(cls, device_id: int = 0):
+        return True
 
     @classmethod
-    def get_device_capability(
+    def has_device_capability(
         cls,
+        capability: Union[Tuple[int, int], int],
         device_id: int = 0,
-    ) -> Optional[DeviceCapability]:
-        major, minor = torch.cuda.get_device_capability(device_id)
-        return DeviceCapability(major=major, minor=minor)
+    ) -> bool:
+        return True
 
     @classmethod
     def get_device_name(cls, device_id: int = 0) -> str:
@@ -59,36 +61,9 @@ class AscendPlatform(Platform):
         return torch.cuda.get_device_name(device_id)
 
     @classmethod
-    def get_device_total_memory(cls, device_id: int = 0) -> int:
-        """Get the total memory of a device in bytes."""
-        device_props = torch.cuda.get_device_properties(device_id)
-        return device_props.total_memory
-
-    @classmethod
-    def is_async_output_supported(cls, enforce_eager: Optional[bool]) -> bool:
-        """
-        Check if the current platform supports async output.
-        """
-        if enforce_eager:
-            # from vllm.logger import init_logger
-            # logger = init_logger(__name__)
-            logger.warning(
-                "To see benefits of async output processing, enable CUDA "
-                "graph. Since, enforce-eager is enabled, async output "
-                "processor cannot be used"
-            )
-            return False
+    def is_async_output_supported(cls, _) -> bool:
+        """Check if the current platform supports async output."""
         return True
-
-    @classmethod
-    def inference_mode(cls):
-        """A device-specific wrapper of `torch.inference_mode`.
-
-        This wrapper is recommended because some hardware backends such as TPU
-        do not support `torch.inference_mode`. In such a case, they will fall
-        back to `torch.no_grad` by overriding this method.
-        """
-        return torch.inference_mode(mode=True)
 
     @classmethod
     def check_and_update_config(cls, vllm_config: VllmConfig) -> None:
@@ -105,28 +80,13 @@ class AscendPlatform(Platform):
         scheduler_config = vllm_config.scheduler_config
 
         if parallel_config.worker_cls == "auto":
-            import vllm.envs as envs
-
             if scheduler_config.is_multi_step:
-                if envs.VLLM_USE_V1:
-                    raise NotImplementedError
-                else:
-                    parallel_config.worker_cls = (
-                        "vllm.worker.multi_step_worker.MultiStepWorker"
-                    )
+                parallel_config.worker_cls = "vllm.worker.multi_step_worker.MultiStepWorker"
             elif vllm_config.speculative_config:
-                if envs.VLLM_USE_V1:
-                    raise NotImplementedError
-                else:
-                    parallel_config.worker_cls = (
-                        "vllm.spec_decode.spec_decode_worker.create_spec_worker"
-                    )
-                    parallel_config.sd_worker_cls = "vllm.worker.worker.Worker"
+                parallel_config.worker_cls = "vllm.spec_decode.spec_decode_worker.create_spec_worker"
+                parallel_config.sd_worker_cls = "vllm.worker.worker.Worker"
             else:
-                if envs.VLLM_USE_V1:
-                    parallel_config.worker_cls = "vllm.v1.worker.gpu_worker.Worker"
-                else:
-                    parallel_config.worker_cls = "vllm.worker.worker.Worker"
+                parallel_config.worker_cls = "vllm.worker.worker.Worker"
 
         cache_config = vllm_config.cache_config
         if cache_config and cache_config.block_size is None:
@@ -141,17 +101,40 @@ class AscendPlatform(Platform):
                 "please check size by cmd(npu-smi info). "
                 "For now, we will try default size(64GB) which might not be correct exactly."
             )
-        max_device_memory_for_ms = str(total_device_memory * cache_config.gpu_memory_utilization) + 'GB'
+        max_device_memory_for_ms = str(total_device_memory * cache_config.gpu_memory_utilization) + "GB"
         ms.set_context(max_device_memory=max_device_memory_for_ms)
         logger.info("max_device_memory for mindspore is: ", max_device_memory_for_ms)
 
     @classmethod
-    def verify_quantization(cls, quant: str) -> None:
-        """
-        Verify whether the quantization is supported by the current platform.
-        """
-        if cls.supported_quantization and quant not in cls.supported_quantization:
-            raise ValueError(
-                f"{quant} quantization is currently not supported in "
-                f"{cls.device_name}."
-            )
+    def get_attn_backend_cls(cls, selected_backend, head_size, dtype, kv_cache_dtype, block_size, use_v1, use_mla):
+        """Get the attention backend class of a device."""
+        if use_v1:
+            raise RuntimeError("vLLM-MindSpore do not support v1 egine now!")
+        if use_mla:
+            logger.info("Using MindSpore MLA backend.")
+            return "vllm_mindspore.attention.backends.ms_attn.MLABackend"
+
+        if selected_backend == _Backend.FLASH_ATTN or selected_backend is None:
+            logger.info("Using MindSpore Attention backend.")
+            return "vllm_mindspore.attention.backends.ms_attn.MsAttentionBackend"
+
+        raise ValueError(
+            "Invaild attention backend %s for vLLM-MindSpore with head_size: %s, dtype: %s, kv_cache_dtype: %s, block_size: %s."
+            % (str(selected_backend), str(head_size), str(dtype), str(kv_cache_dtype), str(block_size))
+        )
+
+    @classmethod
+    def get_current_memory_usage(cls, device: Optional[torch.types.Device] = None) -> float:
+        """Return the memory usage in bytes."""
+        return torch.cuda.max_memory_allocated(device)
+
+    @classmethod
+    def get_device_communicator_cls(cls) -> str:
+        """Get device specific communicator class for distributed communication."""
+        return "vllm.distributed.device_communicators.base_device_communicator.DeviceCommunicatorBase"
+
+    @classmethod
+    def get_device_total_memory(cls, device_id: int = 0) -> int:
+        """Get the total memory of a device in bytes."""
+        device_props = torch.cuda.get_device_properties(device_id)
+        return device_props.total_memory

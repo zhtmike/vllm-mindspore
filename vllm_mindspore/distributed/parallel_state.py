@@ -28,28 +28,16 @@ def init_model_parallel_group(
     group_ranks: List[List[int]],
     local_rank: int,
     backend: str,
-    use_custom_allreduce: Optional[bool] = None,
     use_message_queue_broadcaster: bool = False,
     group_name: Optional[str] = None,
 ) -> "GroupCoordinator":
-    from vllm.distributed.parallel_state import (
-        GroupCoordinator,
-        _ENABLE_CUSTOM_ALL_REDUCE,
-    )
+    from vllm.distributed.parallel_state import GroupCoordinator
 
-    if use_custom_allreduce is None:
-        use_custom_allreduce = _ENABLE_CUSTOM_ALL_REDUCE
-
-    # TODO(tronzhang): mindspore doesnot support enough communicate cpu ops, set use_message_queue_broadcaster to False now.
     return GroupCoordinator(
         group_ranks=group_ranks,
         local_rank=local_rank,
         torch_distributed_backend=backend,
-        use_pynccl=False,
-        use_custom_allreduce=use_custom_allreduce,
-        use_tpu_communicator=True,
-        use_hpu_communicator=True,
-        use_xpu_communicator=True,
+        use_device_communicator=True,
         use_message_queue_broadcaster=False,
         group_name=group_name,
     )

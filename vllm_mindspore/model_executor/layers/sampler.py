@@ -91,7 +91,6 @@ class SampleResultArgsType:
     sample_results_dict: SampleResultsDictType
     sampling_metadata: SamplingMetadata
     greedy_samples: Optional[torch.Tensor]
-    beam_search_logprobs: Optional[torch.Tensor]
 
 
 # Union of non-deferred (single-step scheduling)
@@ -704,14 +703,12 @@ def get_pythonized_sample_results(
         sampling_metadata,
         greedy_samples,
         multinomial_samples,
-        beam_search_logprobs,
         sample_results_dict,
     ) = (
         sample_result_args.sample_metadata,
         sample_result_args.sampling_metadata,
         sample_result_args.greedy_samples,
         sample_result_args.multinomial_samples,
-        sample_result_args.beam_search_logprobs,
         sample_result_args.sample_results_dict,
     )
 
@@ -724,9 +721,6 @@ def get_pythonized_sample_results(
         elif sampling_type in (SamplingType.RANDOM, SamplingType.RANDOM_SEED):
             sample_results = _random_sample(seq_groups,
                                             multinomial_samples[sampling_type])
-        elif sampling_type == SamplingType.BEAM:
-            sample_results = _beam_search_sample(seq_groups,
-                                                 beam_search_logprobs)
         sample_results_dict.update(zip(seq_group_id, sample_results))
 
     return [
@@ -768,7 +762,6 @@ def _sample_with_torch(
     sample_metadata: SampleMetadataType = {}
     multinomial_samples: MultinomialSamplesType = {}
     greedy_samples: Optional[torch.Tensor] = None
-    beam_search_logprobs: Optional[torch.Tensor] = None
 
     # Create output tensor for sampled token ids.
     if include_gpu_probs_tensor:
@@ -837,8 +830,6 @@ def _sample_with_torch(
                 sampled_token_ids_tensor[long_sample_indices] = \
                     multinomial_samples[sampling_type].to(torch.long)
 
-        elif sampling_type == SamplingType.BEAM:
-            beam_search_logprobs = logprobs[sample_indices]
         else:
             raise ValueError(f"Unsupported sampling type: {sampling_type}")
 
@@ -849,7 +840,6 @@ def _sample_with_torch(
         sample_metadata=sample_metadata,
         multinomial_samples=multinomial_samples,
         greedy_samples=greedy_samples,
-        beam_search_logprobs=beam_search_logprobs,
         sample_results_dict=sample_results_dict)
 
     if not sampling_metadata.skip_sampler_cpu_output:
@@ -1327,3 +1317,4 @@ def _get_next_prompt_tokens(seq_group: SequenceGroupToSample) -> List[int]:
     next_prompt_tokens = prompt_tokens[
         next_token_index_start:next_token_index_end]
     return next_prompt_tokens
+

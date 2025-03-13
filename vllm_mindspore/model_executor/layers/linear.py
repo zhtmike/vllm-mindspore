@@ -56,6 +56,7 @@ WEIGHT_LOADER_V2_SUPPORTED = [
     "IPEXAWQLinearMethod",
     "IPEXGPTQLinearMethod",
     "HQQMarlinMethod",
+    "QuarkLinearMethod"
 ]
 
 
@@ -498,19 +499,21 @@ class RowParallelLinear(LinearBase):
             input_size, output_size, skip_bias_add, params_dtype, quant_config, prefix
         )
 
-        self.input_is_parallel = input_is_parallel
-        self.reduce_results = reduce_results
-
         # Divide the weight matrix along the last dimension.
         self.tp_rank = get_tensor_model_parallel_rank()
         self.tp_size = get_tensor_model_parallel_world_size()
         self.input_size_per_partition = divide(input_size, self.tp_size)
+        self.output_size_per_partition = output_size
+        self.output_partition_sizes = [output_size]
+        self.input_is_parallel = input_is_parallel
+        self.reduce_results = reduce_results
+
         assert self.quant_method is not None
 
         self.quant_method.create_weights(
             layer=self,
             input_size_per_partition=self.input_size_per_partition,
-            output_partition_sizes=[self.output_size],
+            output_partition_sizes=self.output_partition_sizes,
             input_size=self.input_size,
             output_size=self.output_size,
             params_dtype=self.params_dtype,
@@ -570,10 +573,14 @@ class RowParallelLinear(LinearBase):
         tp_rank = get_tensor_model_parallel_rank()
         input_dim = getattr(param, "input_dim", None)
         use_bitsandbytes_4bit = getattr(param, "use_bitsandbytes_4bit", False)
+        is_sharded_weight = getattr(param, "is_sharded_weight", False)
+        # bitsandbytes loads the weights of the specific portion
+        # no need to narrow
+        is_sharded_weight = is_sharded_weight or use_bitsandbytes_4bit
 
         # bitsandbytes loads the weights of the specific portion
         # no need to narrow here
-        if input_dim is not None and not use_bitsandbytes_4bit:
+        if input_dim is not None and not is_sharded_weight:
             shard_size = param.shape[input_dim]
             start_idx = tp_rank * shard_size
             loaded_weight = loaded_weight.narrow(input_dim, start_idx, shard_size).contiguous()

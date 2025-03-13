@@ -30,6 +30,7 @@ from vllm.attention.backends.abstract import (
     AttentionMetadataBuilder,
     AttentionType,
     AttentionState,
+    AttentionLayer,
 )
 
 if TYPE_CHECKING:
@@ -85,8 +86,9 @@ class MSAttentionMetadata(AttentionMetadata, PagedAttentionMetadata):
     cross_slot_mapping: Optional[torch.Tensor] = None
     cross_block_tables: Optional[torch.Tensor] = None
 
-    # TODO(tronzhang): No need to use cuda_graph for mindspore.
     use_cuda_graph: bool = False
+    enable_kv_scales_calculation: bool
+
 
     @property
     def prefill_metadata(self):
@@ -177,6 +179,12 @@ class MSAttentionMetadata(AttentionMetadata, PagedAttentionMetadata):
 class MsAttentionMetadataBuilder(AttentionMetadataBuilder[MSAttentionMetadata]):
 
     def __init__(self, input_builder: "ModelInputForGPUBuilder"):
+        self.input_builder = input_builder
+        self.runner = input_builder.runner
+        self.sliding_window = input_builder.sliding_window
+        self.block_size = input_builder.block_size
+
+    def prepare(self):
         self.slot_mapping: List[int] = []
         self.prefill_seq_lens: List[int] = []
         self.context_lens: List[int] = []
@@ -190,10 +198,6 @@ class MsAttentionMetadataBuilder(AttentionMetadataBuilder[MSAttentionMetadata]):
         self.num_decode_tokens = 0
         self.has_prefix_cache_hit = False
 
-        self.input_builder = input_builder
-        self.runner = input_builder.runner
-        self.sliding_window = input_builder.sliding_window
-        self.block_size = input_builder.block_size
 
     def _add_seq_group(
         self,
@@ -310,7 +314,6 @@ class MsAttentionMetadataBuilder(AttentionMetadataBuilder[MSAttentionMetadata]):
         num_decode_tokens = self.num_decode_tokens
 
         if use_captured_graph:
-            # TODO(tronzhang): Maybe here only turn graph mode on , and go with then same condition branch logic?
             raise RuntimeError("Doesnot support captured graph now!")
         else:
             block_tables = make_tensor_with_pad(
@@ -334,6 +337,7 @@ class MsAttentionMetadataBuilder(AttentionMetadataBuilder[MSAttentionMetadata]):
             num_prefill_tokens=self.num_prefill_tokens,
             num_decode_tokens=num_decode_tokens,
             multi_modal_placeholder_index_maps=None,
+            enable_kv_scales_calculation=False,
         )
 
 
@@ -342,7 +346,7 @@ class MsAttentionBackend(AttentionBackend):
 
     @staticmethod
     def get_name() -> str:
-        raise "MS_ATTN"
+        return "MS_ATTN"
 
     @staticmethod
     def get_impl_cls() -> Type["AttentionImpl"]:
@@ -399,7 +403,6 @@ class MsAttentionBackend(AttentionBackend):
         kv_caches: List[MsKVCache],
         src_to_dists: torch.Tensor,
     ) -> None:
-        # TODO(tronzhang): this may be slow, a faster interface should be implemented by custom op!
         blocks_to_copy = src_to_dists.asnumpy().tolist()
         for kv_cache in kv_caches:
             npu_key_block, npu_value_block = kv_cache
@@ -445,18 +448,18 @@ class MsAttentionImpl(AttentionImpl):
         kv_cache_dtype: str,
         blocksparse_params: Optional[Dict[str, Any]] = None,
         logits_soft_cap: Optional[float] = None,
+        attn_type: str = AttentionType.DECODER,
     ) -> None:
         pass
 
     def forward(
         self,
+        layer: AttentionLayer,
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
         kv_cache: torch.Tensor,
         attn_metadata: MSAttentionMetadata,
-        k_scale: float = 1.0,
-        v_scale: float = 1.0,
         attn_type: str = AttentionType.DECODER,
         output: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:

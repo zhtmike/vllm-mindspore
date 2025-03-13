@@ -113,15 +113,15 @@ def determine_num_available_blocks(self) -> Tuple[int, int]:
         # of the model.
         _, total_gpu_memory = torch.cuda.mem_get_info()
         with memory_profiling(
-            baseline_memory_in_bytes=total_gpu_memory - self.init_gpu_memory,
-            weights_memory_in_bytes=self.model_runner.model_memory_usage,
+            self.baseline_snapshot,
+            weights_memory=self.model_runner.model_memory_usage,
         ) as result:
             self.model_runner.profile_run()
             torch.cuda.synchronize()
 
         self._assert_memory_footprint_increased_during_profiling()
 
-        memory_use_for_model_run = result.non_kv_cache_memory_in_bytes
+        memory_use_for_model_run = result.non_kv_cache_memory
 
     memory_for_current_instance = (
         total_gpu_memory * self.cache_config.gpu_memory_utilization
@@ -163,11 +163,11 @@ def determine_num_available_blocks(self) -> Tuple[int, int]:
             f"({self.cache_config.gpu_memory_utilization:.2f})"
             f" = {(memory_for_current_instance / GiB_bytes):.2f}GiB\n"
             "model weights take "
-            f"{(result.weights_memory_in_bytes / GiB_bytes):.2f}GiB;"
+            f"{(result.weights_memory / GiB_bytes):.2f}GiB;"
             " non_torch_memory takes "
-            f"{(result.non_torch_increase_in_bytes / GiB_bytes):.2f}GiB;"
+            f"{(result.non_torch_increase / GiB_bytes):.2f}GiB;"
             " PyTorch activation peak memory takes "
-            f"{(result.torch_peak_increase_in_bytes / GiB_bytes):.2f}GiB;"
+            f"{(result.torch_peak_increase / GiB_bytes):.2f}GiB;"
             " the rest of the memory reserved for KV Cache is "
             f"{(available_kv_cache_memory / GiB_bytes):.2f}GiB."
         )
@@ -175,8 +175,6 @@ def determine_num_available_blocks(self) -> Tuple[int, int]:
     logger.info(msg)
 
     # Final cleanup
-    if self.model_runner.lora_manager:
-        self.model_runner.remove_all_loras()
     gc.collect()
 
     return num_gpu_blocks, num_cpu_blocks

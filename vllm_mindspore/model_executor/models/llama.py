@@ -55,6 +55,7 @@ from vllm_mindspore.model_executor.models.model_base import MsModelBase
 from vllm.sequence import IntermediateTensors
 from vllm.attention import AttentionMetadata
 from vllm.model_executor.models.interfaces import SupportsPP
+from vllm.model_executor.model_loader.weight_utils import maybe_remap_kv_scale_name
 
 from mindspore import Tensor, mint, jit, nn
 from mindspore import dtype as mstype
@@ -116,6 +117,7 @@ class LlamaAttention(nn.Cell):
         max_position_embeddings: int = 8192,
         quant_config=None,
         bias: bool = False,
+        bias_o_proj: bool = False,
         cache_config=None,
         prefix: str = "",
     ) -> None:
@@ -140,6 +142,9 @@ class LlamaAttention(nn.Cell):
         self.head_dim = getattr(
             config, "head_dim", self.hidden_size // self.total_num_heads
         )
+        # Phi models introduced a partial_rotary_factor parameter in the config
+        partial_rotary_factor = getattr(config, "partial_rotary_factor", 1)
+        self.rotary_dim = int(partial_rotary_factor * self.head_dim)
         self.q_size = self.num_heads * self.head_dim
         self.kv_size = self.num_kv_heads * self.head_dim
         self.scaling = self.head_dim**-0.5
@@ -159,13 +164,14 @@ class LlamaAttention(nn.Cell):
         self.o_proj = RowParallelLinear(
             input_size=self.total_num_heads * self.head_dim,
             output_size=hidden_size,
-            bias=bias,
+            bias=bias_o_proj,
             quant_config=quant_config,
             prefix=f"{prefix}.o_proj",
         )
 
         is_neox_style = True
-        if quant_config is not None and quant_config.get_name() == "gguf":
+        is_gguf = quant_config and quant_config.get_name() == "gguf"
+        if is_gguf and config.model_type == "llama":
             is_neox_style = False
         self.rotary_emb = get_rope(
             self.head_dim,
@@ -177,13 +183,14 @@ class LlamaAttention(nn.Cell):
         )
 
         if hasattr(config, "interleaved_sliding_window"):
-            if isinstance(config.interleaved_sliding_window, int):
-                sliding_window = config.interleaved_sliding_window
-            elif isinstance(config.interleaved_sliding_window, list):
-                sw_idx = layer_idx % len(config.interleaved_sliding_window)
-                sliding_window = config.interleaved_sliding_window[sw_idx]
+            interleaved_sliding_window = config.interleaved_sliding_window
+            if isinstance(interleaved_sliding_window, int):
+                sliding_window = interleaved_sliding_window
+            elif isinstance(interleaved_sliding_window, list):
+                sw_idx = layer_idx % len(interleaved_sliding_window)
+                sliding_window = interleaved_sliding_window[sw_idx]
             else:
-                raise ValueError(f"{type(sliding_window)} is not supported.")
+                raise ValueError(f"{type(interleaved_sliding_window)} is not supported.")
         else:
             sliding_window = None
 
@@ -246,6 +253,11 @@ class LlamaDecoderLayer(nn.Cell):
         attention_bias = getattr(config, "attention_bias", False) or getattr(
             config, "bias", False
         )
+        bias_o_proj = attention_bias
+        # support internlm/internlm3-8b with qkv_bias
+        if hasattr(config, 'qkv_bias'):
+            attention_bias = config.qkv_bias
+
         self.self_attn = LlamaAttention(
             config=config,
             hidden_size=self.hidden_size,
@@ -258,6 +270,7 @@ class LlamaDecoderLayer(nn.Cell):
             max_position_embeddings=max_position_embeddings,
             quant_config=quant_config,
             bias=attention_bias,
+            bias_o_proj=bias_o_proj,
             cache_config=cache_config,
             prefix=f"{prefix}.self_attn",
         )
@@ -329,11 +342,6 @@ class LlamaModel(nn.Cell):
         config = vllm_config
         self.config = config
         self.padding_idx = config.pad_token_id
-        # TODO: Support lora_config
-        # lora_config = config
-        # lora_vocab = (lora_config.lora_extra_vocab_size *
-        #              (lora_config.max_loras or 1)) if lora_config else 0
-        # self.vocab_size = config.vocab_size + lora_vocab
         self.vocab_size = config.vocab_size
         self.org_vocab_size = config.vocab_size
         # TODO: Support quant_config cache_config

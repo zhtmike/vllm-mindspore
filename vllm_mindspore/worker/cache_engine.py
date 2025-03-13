@@ -20,6 +20,8 @@
 from typing import List
 
 from vllm.logger import init_logger
+from vllm import envs
+from vllm.platforms import current_platform
 
 from vllm_mindspore.utils import MsKVCache, get_valid_dtype, is_use_mla, get_dtype_size
 
@@ -49,7 +51,6 @@ def ms_allocate_kv_cache(
 
     self.dtype = get_valid_dtype(self.dtype)
 
-    # TODO(tronzhang): A shape with (2, ...) for a kv tensor cannot support in mindspore's tensor and block operation, so split it to two tensor.
     for _ in range(self.num_attention_layers):
         device_type = "CPU" if device == "cpu" else "Ascend"
         current_cache = []

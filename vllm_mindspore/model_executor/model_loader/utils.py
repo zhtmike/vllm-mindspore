@@ -20,14 +20,20 @@ from typing import Tuple, Type
 
 from torch import nn
 
-from vllm.config import ModelConfig
+from vllm.config import ModelConfig, ModelImpl
 
+from vllm.model_executor.models import ModelRegistry
 from vllm_mindspore.model_executor.models.registry import MindSporeModelRegistry
-
+from vllm.model_executor.model_loader.utils import resolve_transformers_fallback
 
 def get_ms_model_architecture(model_config: ModelConfig) -> Tuple[Type[nn.Module], str]:
     architectures = getattr(model_config.hf_config, "architectures", [])
 
+    vllm_supported_archs = ModelRegistry.get_supported_archs()
+    is_vllm_supported = any(arch in vllm_supported_archs
+                            for arch in architectures)
+    if not is_vllm_supported:
+        raise RuntimeError("vLLM-Mindspore does not support %s for now." % str(architectures))
     model_cls, arch = MindSporeModelRegistry.resolve_model_cls(architectures)
     if model_config.task == "embed":
         raise RecursionError("MindSpore unsupport embed model task now!")

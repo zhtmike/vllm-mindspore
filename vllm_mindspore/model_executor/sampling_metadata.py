@@ -35,8 +35,6 @@ _SAMPLING_EPS = 1e-5
 from mindspore import Tensor
 import mindspore as ms
 
-# TODO(tronzhang): use vllm's SequenceGroupToSample. (now for tensor create pin/device and tensor.to)
-
 
 @dataclass
 class SequenceGroupToSample:
@@ -602,7 +600,6 @@ class SamplingTensors:
         # Because the memory is pinned, we can do non-blocking
         # transfer to device.
 
-        # TODO(tronzhang): mindspore tensor donot support tensor.to(device=xxx, non_blocking=xxx), but tensor.move_to(to, blocking=xxx).
         return cls(
             temperatures=temperatures_t,
             top_ps=top_ps_t,

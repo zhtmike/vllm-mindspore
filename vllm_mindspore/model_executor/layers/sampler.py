@@ -425,7 +425,7 @@ def _apply_top_k_top_p(
     # Apply top-k.
     top_k_mask = logits_sort.size(1) - k.to(torch.long)
     # Get all the top_k values.
-    top_k_mask = logits_sort.gather(top_k_mask, 0)
+    top_k_mask = logits_sort.gather(1, top_k_mask.unsqueeze(dim=1))
     top_k_mask = logits_sort < top_k_mask
     logits_sort.masked_fill_(top_k_mask, -float("inf"))
 

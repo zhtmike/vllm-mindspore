@@ -40,7 +40,6 @@ from mindformers.core.context import build_context
 from mindformers.core.parallel_config import build_parallel_config
 
 from mindformers.models.llama import LlamaConfig as LlamaConfig_MF
-from mindformers.trainer import BaseTrainer
 from research.qwen2_5.infer.qwen2_5 import (
     ParallelQwenForCausalLM as ParallelQwenForCausalLM_MF,
 )
@@ -52,7 +51,7 @@ from vllm_mindspore.utils import calc_block_num
 import mindspore as ms
 from mindspore import Tensor, JitConfig, Model
 from vllm_mindspore.model_executor.models.mf_models.qwen2_infer_parallelism import Qwen2InferParallelism
-
+from vllm_mindspore.model_executor.models.mf_models.attention_mask import LowerTriangularMask
 
 logger = init_logger(__name__)
 
@@ -115,6 +114,7 @@ class Qwen2ForCausalLM(MsModelBase):
         self.mf_model_config.block_size = self.cache_config.block_size
         if self.mf_config.moe_config:
             self.mf_model_config.moe_config = self.mf_config.moe_config
+        self.mf_model_config.return_hidden_states = True
 
         # qwen qkv concat will support in next version
         self.mf_model_config.qkv_concat = False
@@ -128,7 +128,6 @@ class Qwen2ForCausalLM(MsModelBase):
         self.mf_config.load_checkpoint = self.get_model_path()
 
         self.mf_kvcaches_init = False
-        self.logits = None
 
         self.sampler = get_sampler()
         self.set_modules({"model": self.network})
@@ -140,6 +139,9 @@ class Qwen2ForCausalLM(MsModelBase):
             raise ValueError(f"Duplicate layer name: {prefix}")
         for i in range(self.mf_model_config.num_layers):
             compilation_config.static_forward_context[str(i)] = self.kv_caches[i]
+
+        self.casual_mask = LowerTriangularMask(mf_model_config=self.mf_model_config)
+        self.set_flags = False
 
     def update_mf_kvcaches(self):
         if self.mf_kvcaches_init:
@@ -169,39 +171,59 @@ class Qwen2ForCausalLM(MsModelBase):
     ) -> Union[Tensor, IntermediateTensors]:
         self.update_mf_kvcaches()
 
-        is_prefill = True if attn_metadata.prefill_metadata else False
-
-        self.logits = None
+        query_lens = attn_metadata.query_lens
+        kv_cache_lens = attn_metadata.seq_lens_tensor.asnumpy() - query_lens
+        if attn_metadata.num_decode_tokens == 0 and kv_cache_lens.max() == 0:
+            is_prefill = True
+        else:
+            is_prefill = False
+        q_seq_lens = ms.Tensor(query_lens, dtype=ms.int32)
+        position_ids = ms.Tensor(positions, dtype=ms.int32)
+        attention_mask = self.casual_mask.gen_attention_mask(is_prefill, position_ids, query_lens)
 
         model_inputs = {}
         model_inputs["input_ids"] = _batch_seq(input_ids, is_prefill)
-        model_inputs["batch_valid_length"] = ms.ops.expand_dims(
-            attn_metadata.seq_lens_tensor, 0
-        )
+        model_inputs["batch_valid_length"] = ms.Tensor.from_numpy(np.expand_dims(
+            attn_metadata.seq_lens_tensor.asnumpy(), 0))
         model_inputs["block_tables"] = _pad_block_table(
             attn_metadata.block_tables,
             self.mf_model_config.seq_length,
             self.mf_model_config.block_size,
         )
         model_inputs["slot_mapping"] = attn_metadata.slot_mapping
+        model_inputs["position_ids"] = position_ids
+        model_inputs["q_seq_lens"] = q_seq_lens
+        model_inputs["attention_mask"] = attention_mask
 
         if is_prefill:
             self.network.phase = "prefill"
-            self.network.add_flags_custom(is_first_iteration=True)
-            self.logits = self.network(**model_inputs)
+            if not self.set_flags:
+                self.network.add_flags_custom(is_first_iteration=True)
+            hidden_states = self.network(**model_inputs)
             self.network.phase = "increment"
-            self.network.add_flags_custom(is_first_iteration=False)
+            if not self.set_flags:
+                self.network.add_flags_custom(is_first_iteration=False)
+                self.set_flags = True
         else:
-            self.logits = self.network(**model_inputs)
+            hidden_states = self.network(**model_inputs)
 
-        return None
+        return hidden_states
 
     def compute_logits(
         self,
         hidden_states: Tensor,
         sampling_metadata: SamplingMetadata,
     ) -> Optional[Tensor]:
-        return self.logits
+        selected_token_indices = sampling_metadata.selected_token_indices
+        if selected_token_indices is not None and selected_token_indices.numel() <= 0:
+            logits = ms.mint.zeros((0, self.mf_model_config.vocab_size),
+                                    dtype=self.mf_model_config.compute_dtype)
+        else:
+            hidden_states = hidden_states.index_select(0, selected_token_indices)
+            logits = self.network.lm_head(hidden_states)
+            logits = logits.reshape(-1, logits.shape[-1])
+
+        return logits
 
     def sample(
         self,

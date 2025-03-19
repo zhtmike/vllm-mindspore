@@ -69,6 +69,7 @@ class MSAttentionMetadata(AttentionMetadata, PagedAttentionMetadata):
     query_start_loc: Optional[torch.Tensor] = None
     kv_start_loc: Optional[torch.Tensor] = None
     prefill_block_tables: Optional[torch.Tensor] = None
+    query_lens: Optional[List[int]] = None,
 
     # Begin encoder attn & enc/dec cross-attn fields...
     # Encoder sequence lengths representation
@@ -338,6 +339,7 @@ class MsAttentionMetadataBuilder(AttentionMetadataBuilder[MSAttentionMetadata]):
             num_decode_tokens=num_decode_tokens,
             multi_modal_placeholder_index_maps=None,
             enable_kv_scales_calculation=False,
+            query_lens=query_lens,
         )
 
 

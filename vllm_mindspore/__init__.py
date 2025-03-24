@@ -147,12 +147,14 @@ vllm.worker.model_runner.GPUModelRunnerBase.profile_run = profile_run
 from vllm_mindspore.distributed.parallel_state import (
     all_reduce_for_GroupCoordinator,
     init_model_parallel_group,
+    init_group_coordinator,
 )
 
 vllm.distributed.parallel_state.GroupCoordinator.all_reduce = (
     all_reduce_for_GroupCoordinator
 )
 vllm.distributed.parallel_state.init_model_parallel_group = init_model_parallel_group
+vllm.distributed.parallel_state.GroupCoordinator.__init__ = init_group_coordinator
 
 from vllm_mindspore.executor.multiproc_worker_utils import (
     get_mp_context as ms_get_mp_context,

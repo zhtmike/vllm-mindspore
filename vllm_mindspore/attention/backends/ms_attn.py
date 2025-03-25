@@ -340,6 +340,7 @@ class MsAttentionMetadataBuilder(AttentionMetadataBuilder[MSAttentionMetadata]):
             multi_modal_placeholder_index_maps=None,
             enable_kv_scales_calculation=False,
             query_lens=query_lens,
+            max_query_len=max_query_len
         )
 
 

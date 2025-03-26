@@ -44,8 +44,7 @@ from research.deepseek3.deepseek3 import (
 )
 
 from vllm_mindspore.model_executor.layers.sampler import get_sampler
-from vllm_mindspore.model_executor.models.mf_models.mf_model_base import MfModelBase, \
-    _pad_block_table, Fake_Attention
+from vllm_mindspore.model_executor.models.mf_models.mf_model_base import MfModelBase, Fake_Attention
 from vllm_mindspore.utils import calc_block_num
 
 from vllm_mindspore.model_executor.models.mf_models.deepseekv3_infer_parallelism import DeepseekInferParallelism
@@ -114,9 +113,6 @@ class DeepseekV3ForCausalLM(MfModelBase):
                 k_cache._data_ptr(), k_cache.shape, k_cache.dtype
             )
         self.mf_kvcaches_init = True
-
-    def pad_block_table(self, block_tables, seq_length, block_size):
-        return _pad_block_table(block_tables, seq_length, block_size, 2)
 
     def load_weights(self, weights: Iterable[Tuple[str, Tensor]]) -> Set[str]:
         if self.mf_config.load_ckpt_format == "ckpt":

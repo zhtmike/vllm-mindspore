@@ -30,8 +30,7 @@ from research.qwen2_5.infer.qwen2_5 import (
 )
 
 from vllm_mindspore.model_executor.layers.sampler import get_sampler
-from vllm_mindspore.model_executor.models.mf_models.mf_model_base import MfModelBase, \
-    _pad_block_table, Fake_Attention
+from vllm_mindspore.model_executor.models.mf_models.mf_model_base import MfModelBase, Fake_Attention
 from vllm_mindspore.utils import calc_block_num
 from vllm_mindspore.model_executor.models.mf_models.qwen2_infer_parallelism import Qwen2InferParallelism
 from vllm_mindspore.model_executor.models.mf_models.attention_mask import LowerTriangularMask
@@ -80,9 +79,6 @@ class Qwen2ForCausalLM(MfModelBase):
 
         self.casual_mask = LowerTriangularMask(mf_model_config=self.mf_model_config)
         self.set_flags = False
-
-    def pad_block_table(self, block_tables, seq_length, block_size):
-        return _pad_block_table(block_tables, seq_length, block_size, 1)
 
     def load_weights(self, weights: Iterable[Tuple[str, Tensor]]) -> Set[str]:
         model_parallelism = Qwen2InferParallelism(self.mf_config, self.network, False)

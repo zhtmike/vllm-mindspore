@@ -29,6 +29,7 @@ from typing import (
     Tuple,
     Union,
 )
+import numpy as np
 
 import torch
 
@@ -350,3 +351,20 @@ def is_use_mla(model_config):
     return hasattr(model_config.hf_text_config, "model_type") and (
         model_config.hf_text_config.model_type in ("deepseek_v3",)
     )
+
+
+def convert_np_to_ms_dtype(value):
+    """convert_np_to_ms_dtype"""
+    if value.dtype == np.int8:
+        value_dtype = ms.int8
+    elif value.dtype == np.int32:
+        value_dtype = ms.int32
+    elif value.dtype == np.int64:
+        value_dtype = ms.int64
+    elif value.dtype == np.float64:
+        value_dtype = ms.float64
+    elif value.dtype == np.float32:
+        value_dtype = ms.float32
+    else:
+        value_dtype = ms.bfloat16
+    return value_dtype

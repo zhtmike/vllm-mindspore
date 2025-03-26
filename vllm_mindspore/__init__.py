@@ -47,7 +47,6 @@ vllm.utils.current_platform = ascend_platform
 
 from vllm_mindspore.utils import (
     direct_register_custom_op,
-    memory_profiling,
     make_tensor_with_pad,
     async_tensor_h2d,
     get_dtype_size,
@@ -56,7 +55,6 @@ from vllm_mindspore.utils import (
 )
 
 vllm.utils.direct_register_custom_op = direct_register_custom_op
-vllm.utils.memory_profiling = memory_profiling
 vllm.utils.make_tensor_with_pad = make_tensor_with_pad
 vllm.utils.async_tensor_h2d = async_tensor_h2d
 vllm.utils.get_dtype_size = get_dtype_size
@@ -129,8 +127,7 @@ vllm.model_executor.model_loader.loader.safetensors_weights_iterator = (
 )
 
 from vllm_mindspore.worker.worker import (
-    _warm_up_model,
-    determine_num_available_blocks,
+    _warm_up_model
 )
 from vllm_mindspore.worker.profile import (
     wrapper_worker_init,
@@ -139,13 +136,13 @@ from vllm_mindspore.worker.profile import (
 from vllm.worker.worker import Worker
 
 Worker._warm_up_model = _warm_up_model
-Worker.determine_num_available_blocks = determine_num_available_blocks
 Worker.__init__ = wrapper_worker_init(Worker.__init__)
 Worker.init_device = wrapper_worker_init_device(Worker.init_device)
 
 from vllm_mindspore.worker.model_runner import (
     _get_cuda_graph_pad_size,
     profile_run,
+    _dummy_run,
     _get_supported_attention_backends
 )
 
@@ -153,6 +150,7 @@ vllm.worker.model_runner.ModelInputForGPUBuilder._get_cuda_graph_pad_size = (
     _get_cuda_graph_pad_size
 )
 vllm.worker.model_runner.GPUModelRunnerBase.profile_run = profile_run
+vllm.worker.model_runner.GPUModelRunnerBase._dummy_run = _dummy_run
 
 import vllm.worker.multi_step_model_runner
 vllm.worker.multi_step_model_runner._get_supported_attention_backends = _get_supported_attention_backends

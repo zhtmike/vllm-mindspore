@@ -31,7 +31,6 @@ from research.qwen2_5.infer.qwen2_5 import (
 
 from vllm_mindspore.model_executor.layers.sampler import get_sampler
 from vllm_mindspore.model_executor.models.mf_models.mf_model_base import MfModelBase, Fake_Attention
-from vllm_mindspore.utils import calc_block_num
 from vllm_mindspore.model_executor.models.mf_models.qwen2_infer_parallelism import Qwen2InferParallelism
 from vllm_mindspore.model_executor.models.mf_models.attention_mask import LowerTriangularMask
 
@@ -44,11 +43,6 @@ class Qwen2ForCausalLM(MfModelBase):
         super(Qwen2ForCausalLM, self).__init__(vllm_config=vllm_config, prefix=prefix)
 
         self.mf_model_config = LlamaConfig_MF(**self.mf_config.model.model_config)
-        # Cannot get num_gpu_blocks from cache config now, calculate one first.
-        self.mf_model_config.num_blocks = calc_block_num(
-            self.cache_config, self.model_config, self.parallel_config
-        )
-        self.mf_model_config.block_size = self.cache_config.block_size
         if self.mf_config.moe_config:
             self.mf_model_config.moe_config = self.mf_config.moe_config
         self.mf_model_config.return_hidden_states = True

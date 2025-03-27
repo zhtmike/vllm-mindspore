@@ -7,7 +7,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#        http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -114,7 +114,7 @@ class MSAttentionMetadata(AttentionMetadata, PagedAttentionMetadata):
     query_start_loc: Optional[torch.Tensor] = None
     kv_start_loc: Optional[torch.Tensor] = None
     prefill_block_tables: Optional[torch.Tensor] = None
-    query_lens: Optional[List[int]] = None,
+    query_lens: Optional[List[int]] = None
 
     # Begin encoder attn & enc/dec cross-attn fields...
     # Encoder sequence lengths representation

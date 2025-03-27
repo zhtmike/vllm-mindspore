@@ -132,10 +132,16 @@ from vllm_mindspore.worker.worker import (
     _warm_up_model,
     determine_num_available_blocks,
 )
+from vllm_mindspore.worker.profile import (
+    wrapper_worker_init,
+    wrapper_worker_init_device
+)
 from vllm.worker.worker import Worker
 
 Worker._warm_up_model = _warm_up_model
 Worker.determine_num_available_blocks = determine_num_available_blocks
+Worker.__init__ = wrapper_worker_init(Worker.__init__)
+Worker.init_device = wrapper_worker_init_device(Worker.init_device)
 
 from vllm_mindspore.worker.model_runner import (
     _get_cuda_graph_pad_size,

@@ -55,6 +55,7 @@ class Qwen2ForCausalLM(MfModelBase):
 
         # qwen qkv concat will support in next version
         self.mf_model_config.qkv_concat = False
+        setattr(self.mf_model_config, 'npu_mem_size', -1)
         self.mf_config.model.model_config.qkv_concat = False
         # Initial network
         self.network = ParallelQwenForCausalLM_MF(self.mf_model_config)

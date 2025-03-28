@@ -20,6 +20,7 @@ import contextlib
 import gc
 import logging
 import os
+import sys
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -256,3 +257,8 @@ def convert_np_to_ms_dtype(value):
     else:
         value_dtype = ms.bfloat16
     return value_dtype
+
+# Replace the directly loaded module in vllm, such as 'from module import xxx'
+def update_modules(name, module):
+    logger.info(f"replace module {name} by {module}")
+    sys.modules.update({name: module})

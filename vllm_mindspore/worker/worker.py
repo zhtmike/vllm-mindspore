@@ -34,7 +34,7 @@ from vllm.distributed import (
 
 from vllm.logger import init_logger
 
-from vllm_mindspore.utils import is_mindformers_model_backend
+from vllm_mindspore.utils import get_valid_dtype
 from vllm.model_executor import set_random_seed
 from vllm.sequence import SequenceGroupMetadata
 from vllm.sampling_params import SamplingParams
@@ -43,9 +43,9 @@ from vllm.sampling_params import SamplingParams
 logger = init_logger(__name__)
 
 
-def _prepare_input_for_warmup(model_config, model_runner, cache_engine, is_prefill):
+def _prepare_input_for_warmup(model_config, model_runner, cache_engine, is_prefill, is_mtp_model=False):
     bs = 1
-    seq_len = model_config.max_seq_len_to_capture if is_prefill else 1
+    seq_len = model_runner.scheduler_config.max_num_batched_tokens if is_prefill else 1
     dummy_data = model_runner.input_registry.dummy_data_for_profiling(model_config, seq_len, model_runner.mm_registry)
     block_tables = [i for i in range(math.ceil(seq_len / cache_engine.block_size))]
     seqs = [
@@ -66,20 +66,32 @@ def _prepare_input_for_warmup(model_config, model_runner, cache_engine, is_prefi
     block_tables = model_input.attn_metadata.block_tables
     if block_tables is not None and block_tables.numel() <= 0:
         model_input.attn_metadata.block_tables = torch.zeros((1, 1), dtype=torch.int32)
-    return model_input
+
+    previous_hidden_states = None if not is_mtp_model else \
+        torch.ones([bs, seq_len, model_config.get_hidden_size()], dtype=get_valid_dtype(model_config.dtype))
+    return model_input, previous_hidden_states
 
 
 def _warm_up_model(self) -> None:
     # cache_engine is a list with length equal to the size of pipeline-parallel, and only pp=1 is supported.
     kv_cache = self.cache_engine[0].gpu_cache
+    is_mtp_model = self.speculative_config is not None and self.model_config.hf_config.model_type == "deepseek_mtp"
+    if is_mtp_model:
+        # prefill mtp model
+        model_input, previous_hidden_states = _prepare_input_for_warmup(self.model_config, self.model_runner,
+                                                                        self.cache_engine[0], True, is_mtp_model)
+        self.model_runner.execute_model(model_input, kv_cache, None, previous_hidden_states=previous_hidden_states)
 
     # warmup for decode
     if self.vllm_config.scheduler_config.is_multi_step:
-        model_input = _prepare_input_for_warmup(self.model_config, self.model_runner._base_model_runner, self.cache_engine[0], False)
+        model_input, _ = _prepare_input_for_warmup(self.model_config, self.model_runner._base_model_runner,
+                                                   self.cache_engine[0], False)
         self.model_runner._base_model_runner.execute_model(model_input, kv_cache, None)
     else:
-        model_input = _prepare_input_for_warmup(self.model_config, self.model_runner, self.cache_engine[0], False)
-        self.model_runner.execute_model(model_input, kv_cache, None)
+        model_input, previous_hidden_states = _prepare_input_for_warmup(self.model_config, self.model_runner,
+                                                                        self.cache_engine[0], False, is_mtp_model)
+        self.model_runner.execute_model(model_input, kv_cache, None, previous_hidden_states=previous_hidden_states)
+
     torch.cuda.synchronize()
 
     # Reset the seed to ensure that the random state is not affected by

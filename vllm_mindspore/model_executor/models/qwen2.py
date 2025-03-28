@@ -495,7 +495,8 @@ class Qwen2ForCausalLM(MsModelBase):
         kv_caches: List[Tuple[Tensor, Tensor]],
         attn_metadata: AttentionMetadata,
         intermediate_tensors: IntermediateTensors = None,
-        inputs_embeds: Tensor = None
+        inputs_embeds: Tensor = None,
+        **kwargs
     ) -> Union[Tensor, IntermediateTensors]:
         if attn_metadata.num_prefill_tokens > 0:
             input_ids = input_ids.expand_dims(0)

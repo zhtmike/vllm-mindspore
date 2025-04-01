@@ -4,7 +4,8 @@
 
 #include "ms_extension.h"
 
-#include "adv_step_flash.h"
+#include "ascendc/adv_step_flash.h"
+#include "module/module.h"
 
 using BaseTensor = mindspore::tensor::BaseTensor;
 using BaseTensorPtr = mindspore::tensor::BaseTensorPtr;
@@ -91,7 +92,7 @@ void AdvStepFlashAscendC(int32_t num_seqs, int32_t num_queries, int32_t block_si
   seq_lens = caster.RecoveryTensorDtype(seq_lens, "seq_lens");
 }
 
-PYBIND11_MODULE(MS_EXTENSION_NAME, m) {
+MS_EXTENSION_MODULE(adv_step_flash) {
   m.def("adv_step_flash", &AdvStepFlashAscendC, "adv_step_flash_ascendc", pybind11::arg("num_seqs"),
         pybind11::arg("num_queries"), pybind11::arg("block_size"), pybind11::arg("input_tokens"),
         pybind11::arg("sampled_token_ids"), pybind11::arg("input_positions"), pybind11::arg("seq_lens"),

@@ -44,8 +44,7 @@ from research.deepseek3.deepseek3 import (
 )
 
 from vllm_mindspore.model_executor.layers.sampler import get_sampler
-from vllm_mindspore.model_executor.models.mf_models.mf_model_base import MfModelBase, Fake_Attention
-from vllm_mindspore.utils import calc_block_num
+from vllm_mindspore.model_executor.models.mf_models.mf_model_base import MfModelBase, Fake_MLA
 
 from vllm_mindspore.model_executor.models.mf_models.deepseekv3_infer_parallelism import DeepseekInferParallelism
 from vllm_mindspore.model_executor.models.mf_models.attention_mask import LowerTriangularMask
@@ -63,8 +62,6 @@ class DeepseekV3ForCausalLM(MfModelBase):
         self.mf_config.load_checkpoint = self.get_model_path()
 
         self.mf_model_config = DeepseekV3Config_MF(**self.mf_config.model.model_config)
-        self.mf_model_config.num_blocks = calc_block_num(self.cache_config, self.model_config, self.parallel_config)
-        self.mf_model_config.block_size = self.cache_config.block_size
         if self.mf_config.moe_config:
             self.mf_model_config.moe_config = self.mf_config.moe_config
         self.mf_model_config.return_hidden_states = True
@@ -90,7 +87,7 @@ class DeepseekV3ForCausalLM(MfModelBase):
         self.sampler = get_sampler()
         self.set_modules({"model": self.network})
 
-        self.kv_caches = [Fake_Attention() for i in range(self.mf_model_config.num_layers)]
+        self.kv_caches = [Fake_MLA() for i in range(self.mf_model_config.num_layers)]
         compilation_config = get_current_vllm_config().compilation_config
 
         if prefix in compilation_config.static_forward_context:

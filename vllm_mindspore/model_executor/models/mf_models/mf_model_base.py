@@ -57,12 +57,32 @@ def _batch_seq(input_tokens, prefill):
 
 class Fake_Attention:
     def __init__(self):
+        vllm_config = get_current_vllm_config()
+        block_size = vllm_config.cache_config.block_size
+        num_kv_heads = vllm_config.model_config.get_num_kv_heads(
+            vllm_config.parallel_config
+        )
+        head_size = vllm_config.model_config.get_head_size()
+        num_block = 0
+        self.kv_shape = [num_block, block_size, num_kv_heads, head_size]
         self.kv_cache = [
-            torch.tensor([]) for _ in range(get_current_vllm_config(
-            ).parallel_config.pipeline_parallel_size)
+            (
+                torch.zeros(self.kv_shape, dtype=ms.bfloat16, device="Ascend"),
+                torch.zeros(self.kv_shape, dtype=ms.bfloat16, device="Ascend"),
+            )
+            for _ in range(vllm_config.parallel_config.pipeline_parallel_size)
         ]
         self.attn_type = AttentionType.DECODER
 
+
+class Fake_MLA(Fake_Attention):
+    def __init__(self):
+        super().__init__()
+        vllm_config = get_current_vllm_config()
+        self.kv_cache = [
+            (torch.zeros(self.kv_shape, dtype=ms.bfloat16, device="Ascend"),)
+            for _ in range(vllm_config.parallel_config.pipeline_parallel_size)
+        ]
 
 class MfModelBase(MsModelBase):
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:

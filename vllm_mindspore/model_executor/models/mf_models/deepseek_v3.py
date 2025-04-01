@@ -27,7 +27,7 @@ from vllm.config import  get_current_vllm_config
 from vllm.forward_context import get_forward_context
 from vllm.logger import init_logger
 
-from mindspore import Tensor, JitConfig, Model
+from mindspore import Tensor, JitConfig, Model, mutable
 from mindspore.common import dtype as msdtype
 
 from mindspore_gs.ptq import PTQ
@@ -68,6 +68,7 @@ class DeepseekV3ForCausalLM(MfModelBase):
         if self.mf_config.moe_config:
             self.mf_model_config.moe_config = self.mf_config.moe_config
         self.mf_model_config.return_hidden_states = True
+        setattr(self.mf_model_config, 'npu_mem_size', -1)
 
         self.is_quant = bool(hasattr(self.mf_model_config, "quantization_config") and
                              self.mf_model_config.quantization_config)
@@ -100,19 +101,13 @@ class DeepseekV3ForCausalLM(MfModelBase):
         self.casual_mask = LowerTriangularMask(mf_model_config=self.mf_model_config)
         self.set_flags = False
 
-    def update_mf_kvcaches(self):
-        if self.mf_kvcaches_init:
-            return
-
+    def get_kvcache(self):
+        key_cache = []
         forward_context = get_forward_context()
         for i in range(self.mf_model_config.num_layers):
             k_cache = self.kv_caches[i].kv_cache[forward_context.virtual_engine][0]
-            mf_k_cache, _ = self.network.kvcache(i)
-
-            mf_k_cache.set_device_address(
-                k_cache._data_ptr(), k_cache.shape, k_cache.dtype
-            )
-        self.mf_kvcaches_init = True
+            key_cache.append(k_cache)
+        return mutable(key_cache), None
 
     def load_weights(self, weights: Iterable[Tuple[str, Tensor]]) -> Set[str]:
         if self.mf_config.load_ckpt_format == "ckpt":

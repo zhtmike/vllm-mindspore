@@ -193,10 +193,15 @@ package_data = {
 
 def _get_ext_modules():
     ext_modules = []
-    ext_modules.append(Extension("ascendc_kernels_npu", sources=[]))
-    ext_modules.append(Extension("npu_ops", sources=[
-        "adv_step_flash_adapter.cpp"
-    ]))
+    # Currently, the CI environment does not support the compilation of custom operators.
+    # As a temporary solution, this is controlled via an environment variable.
+    # Once the CI environment adds support for custom operator compilation,
+    # this should be updated to enable compilation by default.
+    if os.getenv("vLLM_USE_NPU_ADV_STEP_FLASH_OP", "off") == "on":
+        ext_modules.append(Extension("ascendc_kernels_npu", sources=[]))
+        ext_modules.append(Extension("npu_ops", sources=[
+            "adv_step_flash_adapter.cpp"
+        ]))
     return ext_modules
 
 setup(

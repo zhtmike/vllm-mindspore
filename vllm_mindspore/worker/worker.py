@@ -73,15 +73,6 @@ def _warm_up_model(self) -> None:
     # cache_engine is a list with length equal to the size of pipeline-parallel, and only pp=1 is supported.
     kv_cache = self.cache_engine[0].gpu_cache
 
-    # warmup for prefill
-    if self.vllm_config.scheduler_config.is_multi_step:
-        model_input = _prepare_input_for_warmup(self.model_config, self.model_runner._base_model_runner, self.cache_engine[0], True)
-        self.model_runner._base_model_runner.execute_model(model_input, kv_cache, None)
-    else:
-        model_input = _prepare_input_for_warmup(self.model_config, self.model_runner, self.cache_engine[0], True)
-        self.model_runner.execute_model(model_input, kv_cache, None)
-    torch.cuda.synchronize()
-
     # warmup for decode
     if self.vllm_config.scheduler_config.is_multi_step:
         model_input = _prepare_input_for_warmup(self.model_config, self.model_runner._base_model_runner, self.cache_engine[0], False)

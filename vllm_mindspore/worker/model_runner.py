@@ -40,13 +40,6 @@ def _get_cuda_graph_pad_size(
     return -1
 
 
-def profile_run(self) -> None:
-    max_num_batched_tokens = \
-        self.scheduler_config.max_num_batched_tokens
-    max_num_seqs = self.scheduler_config.max_num_seqs
-    self._dummy_run(max_num_batched_tokens, max_num_seqs)
-
-
 def _dummy_run(self,
                max_num_batched_tokens: int,
                max_num_seqs: int = 1) -> None:

@@ -235,20 +235,10 @@ def check_ready():
 
         mindformers_default_env = {
             "MS_INTERNAL_DISABLE_CUSTOM_KERNEL_LIST": "FlashAttentionScore,PagedAttention",
-            "MS_ALLOC_CONF": "enable_vmm:False",
         }
         env_setup(mindformers_default_env)
     else:
-        env_setup({"MS_ALLOC_CONF": "enable_vmm:True", })
         logger.info("Run with native model backend!")
-
-def is_use_mla(model_config):
-    if not is_mindformers_model_backend():
-        return False
-
-    return hasattr(model_config.hf_text_config, "model_type") and (
-        model_config.hf_text_config.model_type in ("deepseek_v3",)
-    )
 
 
 def convert_np_to_ms_dtype(value):

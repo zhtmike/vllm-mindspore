@@ -79,6 +79,7 @@ vllm.model_executor.models.ModelRegistry = MindSporeModelRegistry
 vllm.model_executor.models.registry._SUBPROCESS_COMMAND = _SUBPROCESS_COMMAND
 
 from vllm_mindspore.model_executor.model_loader.utils import get_ms_model_architecture
+
 # To patching the get_model_architecture, should import it first.
 from vllm.model_executor.model_loader import get_model_architecture
 
@@ -106,17 +107,13 @@ from vllm_mindspore.worker.cache_engine import (
     ms_allocate_kv_cache,
     ms_swap_in,
     ms_swap_out,
-    cache_engine_init,
-    get_cache_block_size,
 )
 
 import vllm.worker.cache_engine
 
 vllm.worker.cache_engine.CacheEngine._allocate_kv_cache = ms_allocate_kv_cache
-vllm.worker.cache_engine.CacheEngine.__init__ = cache_engine_init
 vllm.worker.cache_engine.CacheEngine.swap_in = ms_swap_in
 vllm.worker.cache_engine.CacheEngine.swap_out = ms_swap_out
-vllm.worker.cache_engine.CacheEngine.get_cache_block_size = get_cache_block_size
 
 from vllm_mindspore.model_executor.model_loader.weight_utils import (
     safetensors_weights_iterator,
@@ -126,12 +123,10 @@ vllm.model_executor.model_loader.loader.safetensors_weights_iterator = (
     safetensors_weights_iterator
 )
 
-from vllm_mindspore.worker.worker import (
-    _warm_up_model
-)
+from vllm_mindspore.worker.worker import _warm_up_model
 from vllm_mindspore.worker.profile import (
     wrapper_worker_init,
-    wrapper_worker_init_device
+    wrapper_worker_init_device,
 )
 from vllm.worker.worker import Worker
 
@@ -142,7 +137,7 @@ Worker.init_device = wrapper_worker_init_device(Worker.init_device)
 from vllm_mindspore.worker.model_runner import (
     _get_cuda_graph_pad_size,
     _dummy_run,
-    _get_supported_attention_backends
+    _get_supported_attention_backends,
 )
 
 vllm.worker.model_runner.ModelInputForGPUBuilder._get_cuda_graph_pad_size = (
@@ -151,23 +146,23 @@ vllm.worker.model_runner.ModelInputForGPUBuilder._get_cuda_graph_pad_size = (
 vllm.worker.model_runner.GPUModelRunnerBase._dummy_run = _dummy_run
 
 import vllm.worker.multi_step_model_runner
-vllm.worker.multi_step_model_runner._get_supported_attention_backends = _get_supported_attention_backends
+
+vllm.worker.multi_step_model_runner._get_supported_attention_backends = (
+    _get_supported_attention_backends
+)
 
 from vllm_mindspore.distributed.parallel_state import (
-    all_reduce_for_GroupCoordinator,
     init_model_parallel_group,
     init_group_coordinator,
 )
 
-vllm.distributed.parallel_state.GroupCoordinator.all_reduce = (
-    all_reduce_for_GroupCoordinator
-)
 vllm.distributed.parallel_state.init_model_parallel_group = init_model_parallel_group
 vllm.distributed.parallel_state.GroupCoordinator.__init__ = init_group_coordinator
 
 from vllm_mindspore.executor.multiproc_worker_utils import (
     get_mp_context as ms_get_mp_context,
 )
+
 # To patching the get_mp_context, should import it first.
 from vllm.executor.multiproc_worker_utils import get_mp_context
 

@@ -141,7 +141,6 @@ Worker.init_device = wrapper_worker_init_device(Worker.init_device)
 
 from vllm_mindspore.worker.model_runner import (
     _get_cuda_graph_pad_size,
-    profile_run,
     _dummy_run,
     _get_supported_attention_backends
 )
@@ -149,7 +148,6 @@ from vllm_mindspore.worker.model_runner import (
 vllm.worker.model_runner.ModelInputForGPUBuilder._get_cuda_graph_pad_size = (
     _get_cuda_graph_pad_size
 )
-vllm.worker.model_runner.GPUModelRunnerBase.profile_run = profile_run
 vllm.worker.model_runner.GPUModelRunnerBase._dummy_run = _dummy_run
 
 import vllm.worker.multi_step_model_runner

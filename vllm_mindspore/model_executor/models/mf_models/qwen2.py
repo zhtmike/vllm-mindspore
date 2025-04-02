@@ -23,6 +23,7 @@ from vllm.config import get_current_vllm_config
 from vllm.logger import init_logger
 
 from mindspore import Tensor, JitConfig
+from mindspore.nn.utils import no_init_parameters
 
 from mindformers.models.llama import LlamaConfig as LlamaConfig_MF
 from research.qwen2_5.infer.qwen2_5 import (
@@ -31,7 +32,7 @@ from research.qwen2_5.infer.qwen2_5 import (
 
 from vllm_mindspore.model_executor.layers.sampler import get_sampler
 from vllm_mindspore.model_executor.models.mf_models.mf_model_base import MfModelBase, Fake_Attention
-from vllm_mindspore.model_executor.models.mf_models.qwen2_infer_parallelism import Qwen2InferParallelism
+from vllm_mindspore.model_executor.models.mf_models.qwen2_weight_processor import Qwen2WeightProcessor
 from vllm_mindspore.model_executor.models.mf_models.attention_mask import LowerTriangularMask
 
 
@@ -52,7 +53,8 @@ class Qwen2ForCausalLM(MfModelBase):
         setattr(self.mf_model_config, 'npu_mem_size', -1)
         self.mf_config.model.model_config.qkv_concat = False
         # Initial network
-        self.network = ParallelQwenForCausalLM_MF(self.mf_model_config)
+        with no_init_parameters():  # Delay initialization
+            self.network = ParallelQwenForCausalLM_MF(self.mf_model_config)
         self.network._jit_config_dict = JitConfig(
             jit_level="O0", infer_boost="on"
         ).jit_config_dict
@@ -76,8 +78,8 @@ class Qwen2ForCausalLM(MfModelBase):
         self.set_flags = False
 
     def load_weights(self, weights: Iterable[Tuple[str, Tensor]]) -> Set[str]:
-        model_parallelism = Qwen2InferParallelism(self.mf_config, self.network, False)
-        model_parallelism.infer_convert_and_parallelism(self.mf_config.load_checkpoint)
+        weight_processor = Qwen2WeightProcessor(self.mf_config, self.network, False)
+        weight_processor.load_safetensors_shard(self.mf_config.load_checkpoint)
 
         self.network.set_dynamic_inputs()
 

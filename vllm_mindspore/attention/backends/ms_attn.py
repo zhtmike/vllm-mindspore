@@ -780,3 +780,5 @@ class MLABackend(AttentionBackend):
     @staticmethod
     def get_supported_head_sizes() -> List[int]:
         return [576]
+
+FlashAttentionMetadata = MSAttentionMetadata

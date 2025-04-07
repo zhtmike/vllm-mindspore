@@ -193,6 +193,34 @@ vllm.config.ModelConfig._verify_quantization = _verify_quantization
 vllm.config.VllmConfig.__post_init__ = vllm_config_post_init
 vllm.config.SchedulerConfig._verify_args = _verify_args
 
+from .utils import update_modules
+from vllm_mindspore.attention.backends import ms_attn
+update_modules("vllm.attention.backends.flash_attn", ms_attn)
+
+from vllm_mindspore.worker.spec_decode_worker import (
+    spec_decode_worker_init,
+    _run_no_spec,
+    _verify_tokens,
+    _create_output,
+    _merge_outputs,
+)
+from vllm.spec_decode.spec_decode_worker import SpecDecodeWorker
+SpecDecodeWorker.__init__ = spec_decode_worker_init
+SpecDecodeWorker._verify_tokens = _verify_tokens
+SpecDecodeWorker._run_no_spec = _run_no_spec
+
+from vllm.model_executor.layers.spec_decode_base_sampler import SpecDecodeBaseSampler
+SpecDecodeBaseSampler._create_output = _create_output
+
+from vllm.spec_decode.top1_proposer import Top1Proposer
+Top1Proposer._merge_outputs = _merge_outputs
+
+from vllm_mindspore.model_executor.layers.rejection_sampler import _smallest_positive_value, _multinomial
+from vllm.model_executor.layers.rejection_sampler import RejectionSampler
+RejectionSampler._smallest_positive_value = _smallest_positive_value
+RejectionSampler._smallest_positive_value.__set_name__(RejectionSampler, '_smallest_positive_value')
+vllm.model_executor.layers.rejection_sampler._multinomial = _multinomial
+
 from .utils import check_ready
 
 check_ready()

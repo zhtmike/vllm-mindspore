@@ -40,6 +40,7 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
 
     def __init__(self, config, network, is_quant):
         super().__init__(config, network, is_quant)
+        self.num_layers = self.config.model.model_config.num_layers
 
     def quant_convert_weight_name(self, weight_name: str):
         """replace quant net weight name"""
@@ -659,6 +660,25 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
         weight_name = weight_name.replace('.input_layernorm.', '.attention_norm.')
         weight_name = weight_name.replace('.post_attention_layernorm.', '.ffn_norm.')
         weight_name = weight_name.replace('model.norm.weight', 'model.norm_out.weight')
+
+        weight_name = self.convert_mtp_weight_name(weight_name)
+        return weight_name
+
+    def convert_mtp_weight_name(self, weight_name: str):
+        layer = 0 if 'layers.' not in weight_name else int(weight_name[weight_name.find('layers.') : ].split('.')[1])
+        if layer < self.num_layers:
+            return weight_name
+        mtp_prefix = f'mtp_model'
+        is_mtp_layer = 'tok_embeddings' not in weight_name and 'shared_head.' not in weight_name
+        mtp_prefix = mtp_prefix if not is_mtp_layer else f'{mtp_prefix}.layer'
+        is_decode_layer = "ffn" in weight_name or "attention" in weight_name or "feed_forward" in weight_name
+        mtp_prefix = mtp_prefix if not is_decode_layer else f'{mtp_prefix}.decode_layer'
+
+        weight_name = weight_name.replace(f'model.layers.{layer}', mtp_prefix)
+        if "tok_embeddings" in weight_name:
+            weight_name = weight_name.replace(f'.weight', f'.embedding_weight')
+        if "shared_head." in weight_name:
+            weight_name = weight_name.replace(f'shared_head.', f'')
         return weight_name
 
     def infer_process_moe_routed_expert_ffn_weight(self, src_hf_dir, layer_id, hf_weight_map):
@@ -688,8 +708,12 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
         w3_list = []
 
         w1_ms_name = f"model.layers.{layer_id}.feed_forward.routed_experts.ffn.w1.weight"
+        w1_ms_name = w1_ms_name if layer_id < self.num_layers else self.convert_mtp_weight_name(w1_ms_name)
         w2_ms_name = f"model.layers.{layer_id}.feed_forward.routed_experts.ffn.w2.weight"
+        w2_ms_name = w2_ms_name if layer_id < self.num_layers else self.convert_mtp_weight_name(w2_ms_name)
         w3_ms_name = f"model.layers.{layer_id}.feed_forward.routed_experts.ffn.w3.weight"
+        w3_ms_name = w3_ms_name if layer_id < self.num_layers else self.convert_mtp_weight_name(w3_ms_name)
+
         for index in range(0, num_router_experts):
             w1_hf_name = f"model.layers.{layer_id}.mlp.experts.{index}.gate_proj.weight"
             w1_ms_param, _ = self.get_safetensor_from_file(w1_hf_name, src_hf_dir, hf_weight_map,
@@ -713,7 +737,9 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
 
         if ffn_concat:
             w_gate_hidden_name = f"model.layers.{layer_id}.feed_forward.routed_experts.ffn.w_gate_hidden.weight"
-            w_gate_hidden_np = np.concatenate([w1_ms_stack_param, w3_ms_stack_param], axis=2)
+            w_gate_hidden_name = w_gate_hidden_name if layer_id < self.num_layers else \
+                self.convert_mtp_weight_name(w_gate_hidden_name)
+            w_gate_hidden_np = np.concatenate([w1_ms_stack_param, w3_ms_stack_param], axis=1)
             w_gate_hidden_param = ms.from_numpy(w_gate_hidden_np).permute(0, 2, 1).astype(dtype=ms.bfloat16)
             self.parameter_dict[w_gate_hidden_name] = ms.Parameter(w_gate_hidden_param,
                                                                    name=w_gate_hidden_name,
@@ -739,18 +765,23 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
         ffn_concat = self.config.model.model_config.ffn_concat
         w1_hf_name = f"model.layers.{layer_id}.mlp.shared_experts.gate_proj.weight"
         w1_ms_name = self.convert_weight_name(w1_hf_name)
-        w1_ms_param, _ = self.get_safetensor_from_file(w1_hf_name, src_hf_dir, hf_weight_map)
+        w1_ms_param, _ = self.get_safetensor_from_file(w1_hf_name, src_hf_dir, hf_weight_map,
+                                                       is_split_param=True, split_axis=0)
 
         w2_hf_name = f"model.layers.{layer_id}.mlp.shared_experts.down_proj.weight"
         w2_ms_name = self.convert_weight_name(w2_hf_name)
-        w2_ms_param, _ = self.get_safetensor_from_file(w2_hf_name, src_hf_dir, hf_weight_map)
+        w2_ms_param, _ = self.get_safetensor_from_file(w2_hf_name, src_hf_dir, hf_weight_map,
+                                                       is_split_param=True, split_axis=1)
 
         w3_hf_name = f"model.layers.{layer_id}.mlp.shared_experts.up_proj.weight"
         w3_ms_name = self.convert_weight_name(w3_hf_name)
-        w3_ms_param, _ = self.get_safetensor_from_file(w3_hf_name, src_hf_dir, hf_weight_map)
+        w3_ms_param, _ = self.get_safetensor_from_file(w3_hf_name, src_hf_dir, hf_weight_map,
+                                                       is_split_param=True, split_axis=0)
 
         if ffn_concat:
             w_gate_hidden_name = f"model.layers.{layer_id}.feed_forward.shared_experts.w_gate_hidden.weight"
+            w_gate_hidden_name = w_gate_hidden_name if layer_id < self.num_layers else \
+                self.convert_mtp_weight_name(w_gate_hidden_name)
             w_gate_hidden_np = np.concatenate([w1_ms_param, w3_ms_param], axis=0)
             w_gate_hidden_param = ms.from_numpy(w_gate_hidden_np).astype(ms.bfloat16)
             self.parameter_dict[w_gate_hidden_name] = ms.Parameter(w_gate_hidden_param,
@@ -920,6 +951,25 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
             name=ffn_norm_ms_name,
             requires_grad=False)
 
+    def infer_process_mtp_layer_weight(self, src_hf_dir, layer_id, hf_weight_map):
+        parameter_dict = {}
+        mtp_layer_names = ["embed_tokens.weight", "enorm.weight", "hnorm.weight", "eh_proj.weight",
+                           "shared_head.norm.weight", "shared_head.head.weight"]
+        head_names = ["eh_proj.weight", "shared_head.head.weight"]
+        for prefix_name in mtp_layer_names:
+            hf_name = f"model.layers.{layer_id}.{prefix_name}"
+            ms_name = self.convert_weight_name(hf_name)
+            if prefix_name in head_names and not self.config.parallel_config.vocab_emb_dp:
+                ms_param, _ = self.get_safetensor_from_file(hf_name, src_hf_dir, hf_weight_map,
+                                                         is_split_param=True, split_axis=0)
+            else:
+                ms_param, _ = self.get_safetensor_from_file(hf_name, src_hf_dir, hf_weight_map)
+            parameter_dict[ms_name] = ms.Parameter(ms.Tensor(ms_param, ms.bfloat16),
+                                                             name=ms_name,
+                                                             requires_grad=False)
+
+        _, ckpt_not_load = ms.load_param_into_net(self.network, parameter_dict)
+
     def infer_convert_layer_weight(self, src_hf_dir, layer_id, hf_weight_map):
         """infer convert layer weight"""
         if layer_id >= 3:
@@ -930,6 +980,10 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
 
         self.infer_process_attention_weight(src_hf_dir, layer_id, hf_weight_map)
         self.infer_process_norm_weight(src_hf_dir, layer_id, hf_weight_map)
+
+        # convert mtp shared weights.
+        if layer_id >= self.num_layers:
+            self.infer_process_mtp_layer_weight(src_hf_dir, layer_id, hf_weight_map)
 
     def infer_smooth_quant_net_ms_convert_layer_weight(self, src_hf_dir, num_layers, hf_weight_map):
         """infer_smooth_quant_net_ms_convert_layer_weight"""
@@ -1084,17 +1138,18 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
             print(f"gptq-quant param_not_load:{param_not_load}")
             print(f"gptq-quant ckpt_not_load:{ckpt_not_load}")
 
-    def load_safetensors_shard(self, src_hf_dir):
+    def load_safetensors_shard(self, src_hf_dir, is_mtp_model=False):
         """deepseek load safetensors and shard """
         rank_id = get_rank()
         param_json_path = ""
 
         for file in os.listdir(src_hf_dir):
             if file.endswith('index.json'):
-                param_json_path = os.path.join(src_hf_dir, file)
-                with open(param_json_path, "r") as fp:
-                    hf_weight_map = json.load(fp)['weight_map']
-                break
+                if (self.is_quant and 'quant' in file) or (is_mtp_model and 'quant' not in file):
+                    param_json_path = os.path.join(src_hf_dir, file)
+                    with open(param_json_path, "r") as fp:
+                        hf_weight_map = json.load(fp)['weight_map']
+                    break
             elif file.endswith('_name_map.json'):
                 param_json_path = os.path.join(src_hf_dir, file)
                 with open(param_json_path, "r") as fp:
@@ -1107,19 +1162,22 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
 
         quantization_config = self.config.model.model_config.quantization_config
         quant_method = quantization_config.quant_method if quantization_config else None
-        if not quant_method or (quant_method != "gptq-pergroup" and quant_method != "smoothquant"):
+        if not quant_method or (quant_method != "gptq-pergroup" and quant_method != "smoothquant") and \
+                not is_mtp_model:
             self.infer_convert_outer_weight(src_hf_dir, hf_weight_map)
 
-        num_layers = self.config.model.model_config.num_layers
         if quant_method and quant_method == "gptq-pergroup":
-            self.infer_gptq_quant_net_ms_convert_layer_weight(src_hf_dir, num_layers, hf_weight_map)
+            self.infer_gptq_quant_net_ms_convert_layer_weight(src_hf_dir, self.num_layers, hf_weight_map)
             return
         if quant_method and quant_method == "smoothquant":
-            self.infer_smooth_quant_net_ms_convert_layer_weight(src_hf_dir, num_layers, hf_weight_map)
+            self.infer_smooth_quant_net_ms_convert_layer_weight(src_hf_dir, self.num_layers, hf_weight_map)
             return
 
         enable_tqdm = rank_id == 0
-        for layer_id in tqdm(range(num_layers), desc="Weight loading", disable=not enable_tqdm):
+        mtp_layers = self.config.model.model_config.num_nextn_predict_layers
+        start_layer = 0 if not is_mtp_model else self.num_layers
+        end_layer = self.num_layers if not is_mtp_model else self.num_layers + mtp_layers
+        for layer_id in tqdm(range(start_layer, end_layer), desc="Weight loading", disable=not enable_tqdm):
             if self.is_quant:
                 self.infer_quant_net_convert_layer_weight(src_hf_dir, layer_id, hf_weight_map)
             else:

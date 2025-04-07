@@ -134,17 +134,8 @@ class MfModelBase(MsModelBase):
         return mutable(key_cache), mutable(value_cache)
 
 
-    def forward(
-        self,
-        input_ids: Tensor,
-        positions: Tensor,
-        kv_caches: List[Tensor],
-        attn_metadata: AttentionMetadata,
-        intermediate_tensors: Optional[IntermediateTensors] = None,
-        inputs_embeds: Optional[Tensor] = None,
-    ) -> Union[Tensor, IntermediateTensors]:
+    def prepare_inputs(self, input_ids, positions, attn_metadata):
         key_cache, value_cache = self.get_kvcache()
-
         seq_lens = attn_metadata.seq_lens
         max_query_len = attn_metadata.max_query_len
         # When Mutli-Step is enabled with Chunked-Prefill, prefills and
@@ -177,6 +168,24 @@ class MfModelBase(MsModelBase):
         model_inputs["attention_mask"] = attention_mask
         model_inputs["key_cache"] = key_cache
         model_inputs["value_cache"] = value_cache
+
+        return model_inputs, is_prefill
+
+    def update_model_inputs(self, model_inputs, **kwargs):
+        return model_inputs
+
+    def forward(
+        self,
+        input_ids: Tensor,
+        positions: Tensor,
+        kv_caches: List[Tensor],
+        attn_metadata: AttentionMetadata,
+        intermediate_tensors: Optional[IntermediateTensors] = None,
+        inputs_embeds: Optional[Tensor] = None,
+        **kwargs
+    ) -> Union[Tensor, IntermediateTensors]:
+        model_inputs, is_prefill = self.prepare_inputs(input_ids, positions, attn_metadata)
+        model_inputs = self.update_model_inputs(model_inputs, **kwargs)
 
         if is_prefill:
             self.network.phase = "prefill"

@@ -532,6 +532,7 @@ class LlamaForCausalLM(MsModelBase, SupportsPP):
         attn_metadata,
         intermediate_tensors=None,
         inputs_embeds=None,
+        **kwargs
     ):
         if attn_metadata.num_prefill_tokens > 0:
             input_ids = input_ids.expand_dims(0)

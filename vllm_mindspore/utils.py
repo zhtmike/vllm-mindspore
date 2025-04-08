@@ -89,8 +89,8 @@ def _create_empty_tensor(ms_type):
     return init_tensor
 
 
-def _create_dummy_block_tables():
-    return ms.ops.zeros((1, 1), dtype=ms.int32)
+def _create_dummy_block_tables(dtype):
+    return ms.ops.zeros((1, 1), dtype=dtype)
 
 
 def make_tensor_with_pad(
@@ -114,7 +114,7 @@ def make_tensor_with_pad(
     pin_memory = False
 
     if padded_x.size == 0:
-        tensor = _create_dummy_block_tables()
+        tensor = _create_dummy_block_tables(dtype)
     else:
         tensor = torch.from_numpy(padded_x)
     if pin_memory:

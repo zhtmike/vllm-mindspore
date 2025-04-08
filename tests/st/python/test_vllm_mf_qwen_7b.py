@@ -21,14 +21,14 @@ env_manager = set_env.EnvVarManager()
 # def env
 env_vars = {
     "MINDFORMERS_MODEL_CONFIG": "./config/predict_qwen2_5_7b_instruct.yaml",
-    # "ASCEND_CUSTOM_PATH": os.path.expandvars("$ASCEND_HOME_PATH/../"),
+    "ASCEND_CUSTOM_PATH": os.path.expandvars("$ASCEND_HOME_PATH/../"),
     "vLLM_MODEL_BACKEND": "MindFormers",
     "vLLM_MODEL_MEMORY_USE_GB": "50",
     "ASCEND_TOTAL_MEMORY_GB": "64",
-    # "MS_ENABLE_LCCL": "off",
-    # "HCCL_OP_EXPANSION_MODE": "AIV",
-    # "ASCEND_RT_VISIBLE_DEVICES": "0,1",
-    # "MS_ALLOC_CONF": "enable_vmm:True",
+    "MS_ENABLE_LCCL": "off",
+    "HCCL_OP_EXPANSION_MODE": "AIV",
+    "ASCEND_RT_VISIBLE_DEVICES": "0,1",
+    "MS_ALLOC_CONF": "enable_vmm:True",
     "LCCL_DETERMINISTIC": "1",
     "HCCL_DETERMINISTIC": "true",
     "ATB_MATMUL_SHUFFLE_K_ENABLE": "0",
@@ -61,7 +61,8 @@ class TestMfQwen:
         sampling_params = SamplingParams(temperature=0.0, max_tokens=10, top_k=1)
 
         # Create an LLM.
-        llm = LLM(model="/home/workspace/mindspore_dataset/weight/Qwen2.5-7B-Instruct", gpu_memory_utilization=0.9)
+        llm = LLM(model="/home/workspace/mindspore_dataset/weight/Qwen2.5-7B-Instruct",
+                  gpu_memory_utilization=0.9, tensor_parallel_size=2)
         # Generate texts from the prompts. The output is a list of RequestOutput objects
         # that contain the prompt, generated text, and other information.
         outputs = llm.generate(prompts, sampling_params)

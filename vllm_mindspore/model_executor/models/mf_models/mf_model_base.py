@@ -104,14 +104,14 @@ class MfModelBase(MsModelBase):
         self.mf_config.model.model_config.parallel_config.pipeline_stage = 1
 
         self._generate_model_config()
-        self.network = self._create_network()
+        self.network, self.lm_head = self._create_network()
 
         self.network.construct = MethodType(ms.jit(self.network.__class__.construct,
                                                    jit_level='O0', infer_boost='on'),
                                             self.network)
-        self.network.lm_head.construct = MethodType(ms.jit(self.network.lm_head.__class__.construct,
-                                                            jit_level='O0', infer_boost='on'),
-                                                    self.network.lm_head)
+        self.lm_head.construct = MethodType(ms.jit(self.lm_head.__class__.construct,
+                                                   jit_level='O0', infer_boost='on'),
+                                            self.lm_head)
 
     @abstractmethod
     def _generate_model_config(self):
@@ -212,7 +212,7 @@ class MfModelBase(MsModelBase):
                                     dtype=self.mf_model_config.compute_dtype)
         else:
             hidden_states = hidden_states.index_select(0, selected_token_indices)
-            logits = self.network.lm_head(hidden_states)
+            logits = self.lm_head(hidden_states)
             logits = logits.reshape(-1, logits.shape[-1])
 
         return logits

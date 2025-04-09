@@ -1134,6 +1134,7 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
 
         for file in os.listdir(src_hf_dir):
             if file.endswith('index.json'):
+                # mtp model do not support quantization, needs to load bf16 weight.
                 if (self.is_quant and 'quant' in file) or (is_mtp_model and 'quant' not in file):
                     param_json_path = os.path.join(src_hf_dir, file)
                     with open(param_json_path, "r") as fp:

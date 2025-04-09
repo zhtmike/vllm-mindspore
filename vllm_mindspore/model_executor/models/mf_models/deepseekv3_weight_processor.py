@@ -1075,7 +1075,6 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
         no_need_split_layer = ["tok_embeddings", "norm", "q2l_proj",
                                "kv2l", "routed_experts.router.dense",
                                "routed_experts.router.e_score_correction_bias",
-                               "shared_experts.w_gate_hidden", "shared_experts.w2",
                                "topk_bias"]
 
         for param_name, _ in tqdm(hf_weight_map.items(), desc="split safetensors"):
@@ -1085,24 +1084,16 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
             if any([name in param_name for name in no_need_split_layer]):
                 value, is_int4 = self.get_safetensor_from_file(param_name, src_hf_dir,
                                                                hf_weight_map)
-            elif any([name in param_name for name in [".l2q_proj.", ".feed_forward.w_gate_hidden."]]):
-                if param_name.endswith(".weight"):
-                    value, is_int4 = self.get_safetensor_from_file(param_name, src_hf_dir,
-                                                                   hf_weight_map, is_split_param=True,
-                                                                   split_axis=0)
-                else:
-                    value, is_int4 = self.get_safetensor_from_file(param_name, src_hf_dir,
-                                                                   hf_weight_map, is_split_param=True,
-                                                                   split_axis=1)
-            elif any([name in param_name for name in [".feed_forward.w2.", ".wo."]]):
-                if param_name.endswith(".weight"):
-                    value, is_int4 = self.get_safetensor_from_file(param_name, src_hf_dir,
-                                                                   hf_weight_map, is_split_param=True,
-                                                                   split_axis=1)
-                else:
-                    value, is_int4 = self.get_safetensor_from_file(param_name, src_hf_dir,
-                                                                   hf_weight_map, is_split_param=True,
-                                                                   split_axis=0)
+            elif any([name in param_name for name in [".l2q_proj.", ".feed_forward.w_gate_hidden.",
+                                                      "shared_experts.w_gate_hidden"]]):
+                value, is_int4 = self.get_safetensor_from_file(param_name, src_hf_dir,
+                                                                hf_weight_map, is_split_param=True,
+                                                                split_axis=1)
+            elif any([name in param_name for name in [".feed_forward.w2.", ".wo.",
+                                                      "shared_experts.w2"]]):
+                value, is_int4 = self.get_safetensor_from_file(param_name, src_hf_dir,
+                                                                hf_weight_map, is_split_param=True,
+                                                                split_axis=0)
             elif ".routed_experts.ffn.w_gate_hidden." in param_name:
                 value, is_int4 = self.get_safetensor_from_file(param_name, src_hf_dir, hf_weight_map)
                 value_list = []
@@ -1134,9 +1125,7 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
             else:
                 parameter_dict[param_name] = ms.Parameter(ms.Tensor(value, dtype=dst_dtype),
                                                           name=param_name, requires_grad=False)
-            param_not_load, ckpt_not_load = ms.load_param_into_net(self.network, parameter_dict)
-            print(f"gptq-quant param_not_load:{param_not_load}")
-            print(f"gptq-quant ckpt_not_load:{ckpt_not_load}")
+            _, _ = ms.load_param_into_net(self.network, parameter_dict)
 
     def load_safetensors_shard(self, src_hf_dir, is_mtp_model=False):
         """deepseek load safetensors and shard """
@@ -1153,8 +1142,9 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
             elif file.endswith('_name_map.json'):
                 param_json_path = os.path.join(src_hf_dir, file)
                 with open(param_json_path, "r") as fp:
-                    param_map = json.load(fp)
-                    hf_weight_map = param_map["weight_map"] if "weight_map" in param_map else param_map
+                    hf_weight_map = json.load(fp)
+                    if hf_weight_map.get('weight_map'):
+                        hf_weight_map = hf_weight_map['weight_map']
                 break
 
         if not param_json_path:

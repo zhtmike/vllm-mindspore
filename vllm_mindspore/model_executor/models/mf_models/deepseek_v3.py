@@ -46,7 +46,8 @@ from research.deepseek3.deepseek3 import (
 )
 
 from vllm_mindspore.model_executor.layers.sampler import get_sampler
-from vllm_mindspore.model_executor.models.mf_models.mf_model_base import MfModelBase, Fake_MLA
+from vllm_mindspore.model_executor.models.model_base import Fake_MLA
+from vllm_mindspore.model_executor.models.mf_models.mf_model_base import MfModelBase
 
 from vllm_mindspore.model_executor.models.mf_models.deepseekv3_weight_processor import DeepseekV3WeightProcessor
 from vllm_mindspore.model_executor.models.mf_models.attention_mask import LowerTriangularMask

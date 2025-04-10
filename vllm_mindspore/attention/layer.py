@@ -153,15 +153,16 @@ class Attention(nn.Cell):
         query: Tensor,
         key: Tensor,
         value: Tensor,
-        kv_cache: Tuple[Tensor, Tensor],
-        # attn_metadata: MSMetadata,
-        num_prefill_tokens: int,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        num_prefill_tokens: bool,
         num_decode_tokens: int,
         slot_mapping: Tensor,
         batch_valid_length: Tuple[int],
-        context_lens: Tensor,
+        q_seq_lens: Tensor,
         block_tables: Tensor,
         attn_mask: Tensor,
+        decode_mask:Tensor,
     ) -> Tensor:
         """Attention foward, support MHA and GQA.
 
@@ -175,13 +176,13 @@ class Attention(nn.Cell):
             block_tables: shape = [block_size, num_block]
         """
         output = query
-        key_cache, value_cache = kv_cache
         cache_out = self.reshape_and_cache(key, value, key_cache, value_cache, slot_mapping)
         query = ops.depend(query, cache_out)
         if num_prefill_tokens > 0:
             output = self._run_prefill_forward(query, key, value, attn_mask, batch_valid_length, batch_valid_length)
         if num_decode_tokens > 0:
-            output = self._run_decode_forward(query, key_cache, value_cache, block_tables, context_lens)
+            output = self._run_decode_forward(query, key_cache, value_cache, block_tables,batch_valid_length,
+                                              decode_mask, q_seq_lens)
         return output
 
     def _run_prefill_forward(
@@ -206,16 +207,18 @@ class Attention(nn.Cell):
         query = query.view(-1, self.hidden_size_per_partition)
         key = key.view(-1, self.kv_hidden_size_per_partition)
         value = value.view(-1, self.kv_hidden_size_per_partition)
-        _, _, _, output = self.flash_attention(query,
-                                               key,
-                                               value,
-                                               None,
-                                               None,
-                                               None,
-                                               attn_mask,
-                                               None,
-                                               actual_seq_qlen,
-                                               actual_seq_kvlen)
+        _, _, _, output = self.flash_attention(
+            query,
+            key,
+            value,
+            None,
+            None,
+            None,
+            attn_mask,
+            None,
+            actual_seq_qlen,
+            actual_seq_kvlen
+        )
         output = output.view(1, -1, self.hidden_size_per_partition)
         return output
 
@@ -225,7 +228,9 @@ class Attention(nn.Cell):
         key_cache: Tensor,
         value_cache: Tensor,
         block_tables: Tensor,
-        context_lens: Tensor,
+        batch_valid_length: Tensor,
+        decode_mask:Tensor,
+        q_seq_lens: Tensor,
     ) -> Tensor:
         """Decode with PagedAttention.
 
@@ -236,5 +241,15 @@ class Attention(nn.Cell):
             block_tables: shape = [block_size, num_block]
             context_lens: shape = [batch_size, ]
         """
-        output = self.paged_attention(query, key_cache, value_cache, block_tables, context_lens)
+        output = self.paged_attention(
+            query,
+            key_cache,
+            value_cache,
+            block_tables,
+            batch_valid_length,
+            None,
+            None,
+            decode_mask,
+            q_seq_lens
+        )
         return output

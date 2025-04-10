@@ -24,13 +24,10 @@ import numpy as np
 
 from vllm.attention import AttentionMetadata
 from vllm.config import VllmConfig
-from vllm.config import get_current_vllm_config
 from vllm.model_executor.layers.sampler import SamplerOutput
 from vllm.model_executor.sampling_metadata import SamplingMetadata
-from vllm.forward_context import ForwardContext, get_forward_context
 from vllm.sequence import IntermediateTensors
 from vllm.distributed import get_tensor_model_parallel_world_size
-from vllm.attention.backends.abstract import AttentionType
 from vllm.logger import init_logger
 
 import torch
@@ -58,34 +55,6 @@ def _batch_seq(input_tokens, prefill):
     return ms.mint.reshape(input_tokens, (-1, 1)).to(ms.int32)
 
 
-class Fake_Attention:
-    def __init__(self):
-        vllm_config = get_current_vllm_config()
-        block_size = vllm_config.cache_config.block_size
-        num_kv_heads = vllm_config.model_config.get_num_kv_heads(
-            vllm_config.parallel_config
-        )
-        head_size = vllm_config.model_config.get_head_size()
-        num_block = 0
-        self.kv_shape = [num_block, block_size, num_kv_heads, head_size]
-        self.kv_cache = [
-            (
-                torch.zeros(self.kv_shape, dtype=ms.bfloat16, device="Ascend"),
-                torch.zeros(self.kv_shape, dtype=ms.bfloat16, device="Ascend"),
-            )
-            for _ in range(vllm_config.parallel_config.pipeline_parallel_size)
-        ]
-        self.attn_type = AttentionType.DECODER
-
-
-class Fake_MLA(Fake_Attention):
-    def __init__(self):
-        super().__init__()
-        vllm_config = get_current_vllm_config()
-        self.kv_cache = [
-            (torch.zeros(self.kv_shape, dtype=ms.bfloat16, device="Ascend"),)
-            for _ in range(vllm_config.parallel_config.pipeline_parallel_size)
-        ]
 
 class MfModelBase(MsModelBase):
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
@@ -121,18 +90,6 @@ class MfModelBase(MsModelBase):
     @abstractmethod
     def _create_network(self):
         raise NotImplementedError("Function _create_network should be Implemented!")
-
-
-    def get_kvcache(self):
-        key_cache = []
-        value_cache = []
-        forward_context = get_forward_context()
-        for i in range(self.mf_model_config.num_layers):
-            k_cache = self.kv_caches[i].kv_cache[forward_context.virtual_engine][0]
-            v_cache = self.kv_caches[i].kv_cache[forward_context.virtual_engine][1]
-            key_cache.append(k_cache)
-            value_cache.append(v_cache)
-        return mutable(key_cache), mutable(value_cache)
 
 
     def prepare_inputs(self, input_ids, positions, attn_metadata):

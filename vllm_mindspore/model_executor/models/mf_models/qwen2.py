@@ -31,7 +31,8 @@ from research.qwen2_5.infer.qwen2_5 import (
 )
 
 from vllm_mindspore.model_executor.layers.sampler import get_sampler
-from vllm_mindspore.model_executor.models.mf_models.mf_model_base import MfModelBase, Fake_Attention
+from vllm_mindspore.model_executor.models.model_base import Fake_Attention
+from vllm_mindspore.model_executor.models.mf_models.mf_model_base import MfModelBase
 from vllm_mindspore.model_executor.models.mf_models.qwen2_weight_processor import Qwen2WeightProcessor
 from vllm_mindspore.model_executor.models.mf_models.attention_mask import LowerTriangularMask
 

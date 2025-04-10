@@ -23,8 +23,6 @@ env_vars = {
     "MINDFORMERS_MODEL_CONFIG": "./config/predict_deepseek_r1_671b_w8a8.yaml",
     "ASCEND_CUSTOM_PATH": os.path.expandvars("$ASCEND_HOME_PATH/../"),
     "vLLM_MODEL_BACKEND": "MindFormers",
-    "vLLM_MODEL_MEMORY_USE_GB": "40",
-    "ASCEND_TOTAL_MEMORY_GB": "60",
     "MS_ENABLE_LCCL": "off",
     "HCCL_OP_EXPANSION_MODE": "AIV",
     "ASCEND_RT_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",

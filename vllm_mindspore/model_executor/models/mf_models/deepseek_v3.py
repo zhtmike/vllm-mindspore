@@ -98,7 +98,7 @@ class DeepseekV3ForCausalLM(MfModelBase):
             if ptq is not None:
                 ptq.apply(network)
                 ptq.convert(network)
-        return network
+        return network, network.lm_head
 
     def get_kvcache(self):
         key_cache = []

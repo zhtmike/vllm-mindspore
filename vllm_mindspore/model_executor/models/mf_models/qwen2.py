@@ -74,7 +74,7 @@ class Qwen2ForCausalLM(MfModelBase):
         # Initial network
         with no_init_parameters():  # Delay initialization
             network = ParallelQwenForCausalLM_MF(self.mf_model_config)
-        return network
+        return network, network.lm_head
 
     def load_weights(self, weights: Iterable[Tuple[str, Tensor]]) -> Set[str]:
         weight_processor = Qwen2WeightProcessor(self.mf_config, self.network, False)

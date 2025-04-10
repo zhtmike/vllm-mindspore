@@ -36,6 +36,7 @@ from vllm.logger import init_logger
 import torch
 import mindspore as ms
 from mindspore import Tensor, mutable
+from mindspore.common.api import _pynative_executor
 
 from mindformers.tools.register.config import MindFormerConfig
 from mindformers.core.context import build_context
@@ -223,6 +224,7 @@ class MfModelBase(MsModelBase):
         sampling_metadata: SamplingMetadata,
     ) -> Optional[SamplerOutput]:
         next_tokens = self.sampler(logits, sampling_metadata)
+        _pynative_executor.sync()
         return next_tokens
 
     def load_weights(self, weights: Iterable[Tuple[str, Tensor]]) -> Set[str]:

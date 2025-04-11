@@ -23,8 +23,6 @@ env_vars = {
     "MINDFORMERS_MODEL_CONFIG": "./config/predict_qwen2_5_7b_instruct.yaml",
     "ASCEND_CUSTOM_PATH": os.path.expandvars("$ASCEND_HOME_PATH/../"),
     "vLLM_MODEL_BACKEND": "MindFormers",
-    "vLLM_MODEL_MEMORY_USE_GB": "50",
-    "ASCEND_TOTAL_MEMORY_GB": "64",
     "MS_ENABLE_LCCL": "off",
     "HCCL_OP_EXPANSION_MODE": "AIV",
     "ASCEND_RT_VISIBLE_DEVICES": "0,1",

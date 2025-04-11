@@ -101,7 +101,7 @@ class TestDeepSeekMTP:
         sampling_params = SamplingParams(temperature=0.0, max_tokens=10, top_k=1)
 
         # Create an LLM.
-        llm = LLM(model="/home/workspace/mindspore_dataset/weight/DeepSeek-R1-W8A8",
+        llm = LLM(model="/home/workspace/mindspore_dataset/weight/DeepSeek-R1-MTP",
                   trust_remote_code=True, gpu_memory_utilization=0.8, tensor_parallel_size=8,
                   num_speculative_tokens=1)
         # Generate texts from the prompts. The output is a list of RequestOutput objects

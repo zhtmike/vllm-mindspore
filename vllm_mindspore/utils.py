@@ -223,6 +223,9 @@ def check_ready():
     # Common environment variables of predict.
     set_context(jit_config={"jit_level": "O0", "infer_boost": "on"})
 
+    if os.getenv("MS_MEMPOOL_BLOCK_SIZE"):
+        set_context(mempool_block_size=f"{os.environ['MS_MEMPOOL_BLOCK_SIZE']}GB")
+
     if is_mindformers_model_backend():
         logger.info("Run with Mindformers backend!")
         necessary_envs = ("MINDFORMERS_MODEL_CONFIG", )

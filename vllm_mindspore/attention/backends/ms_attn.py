@@ -23,6 +23,8 @@ from itertools import accumulate
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 import os
 
+import numpy as np
+
 import torch
 
 from vllm.attention.backends.abstract import (
@@ -54,6 +56,7 @@ from vllm_mindspore.utils import MsKVCache
 import mindspore as ms
 from mindspore import mutable
 from mindspore._c_expression import swap_cache
+
 
 def advance_step_op(sampled_token_ids,
                     model_input,
@@ -390,19 +393,6 @@ class MSAttentionMetadata(AttentionMetadata, PagedAttentionMetadata):
         else:
             raise AttributeError(f"Invalid attention type {str(attn_type)}")
 
-    def keys(self):
-        return ["num_prefill_tokens", "num_decode_tokens", "slot_mapping", "batch_valid_length", "context_lens", "block_tables"]
-
-    def __getitem__(self, key):
-        if key == "context_lens":
-            key = "seq_lens_tensor"
-        if key == "batch_valid_length":
-            return mutable(getattr(self, "seq_lens"), dynamic_len=True)
-        if key == "block_tables":
-            if getattr(self, key).ndim == 1:
-                return mutable(getattr(self, key).expand_dims(0))
-            return mutable(getattr(self, key))
-        return mutable(getattr(self, key))
 
 class MsAttentionMetadataBuilder(AttentionMetadataBuilder[MSAttentionMetadata]):
 

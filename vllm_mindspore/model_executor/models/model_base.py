@@ -21,16 +21,48 @@ from abc import abstractmethod
 from typing import Iterable, List, Optional, Set, Tuple, Union, Dict
 
 from vllm.attention import AttentionMetadata
-from vllm.config import VllmConfig
+from vllm.config import VllmConfig, get_current_vllm_config
 from vllm.model_executor.layers.sampler import SamplerOutput
 from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.sequence import IntermediateTensors
+from vllm.attention.backends.abstract import AttentionType
+from vllm.forward_context import get_forward_context
+
+import torch
 
 from mindspore import Tensor, nn, mutable
 from mindspore import dtype as mstype
 
 from vllm_mindspore.utils import STR_DTYPE_TO_MS_DTYPE
 
+class Fake_Attention:
+    def __init__(self):
+        vllm_config = get_current_vllm_config()
+        block_size = vllm_config.cache_config.block_size
+        num_kv_heads = vllm_config.model_config.get_num_kv_heads(
+            vllm_config.parallel_config
+        )
+        head_size = vllm_config.model_config.get_head_size()
+        num_block = 0
+        self.kv_shape = [num_block, block_size, num_kv_heads, head_size]
+        self.kv_cache = [
+            (
+                torch.zeros(self.kv_shape, dtype=torch.bfloat16, device="Ascend"),
+                torch.zeros(self.kv_shape, dtype=torch.bfloat16, device="Ascend"),
+            )
+            for _ in range(vllm_config.parallel_config.pipeline_parallel_size)
+        ]
+        self.attn_type = AttentionType.DECODER
+
+
+class Fake_MLA(Fake_Attention):
+    def __init__(self):
+        super().__init__()
+        vllm_config = get_current_vllm_config()
+        self.kv_cache = [
+            (torch.zeros(self.kv_shape, dtype=torch.bfloat16, device="Ascend"),)
+            for _ in range(vllm_config.parallel_config.pipeline_parallel_size)
+        ]
 
 class MsModelBase():
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
@@ -172,13 +204,13 @@ class MsModelBase():
 
         dyn_key_cache = mutable(Tensor(shape=kv_cache_shape, dtype=kv_cache_dtype))
         dyn_value_cache = mutable(Tensor(shape=kv_cache_shape, dtype=kv_cache_dtype))
-        dyn_kv_cache = mutable((dyn_key_cache, dyn_value_cache))
-        dyn_kv_caches = mutable([dyn_kv_cache for _ in range(num_layers)])
+        dyn_key_caches = mutable([dyn_key_cache for _ in range(num_layers)])
+        dyn_value_caches = mutable([dyn_value_cache for _ in range(num_layers)])
 
         dyn_num_prefill_tokens = mutable(1)
         dyn_num_decode_tokens = mutable(0)
-        dyn_context_lens = Tensor(shape=[None, ], dtype=mstype.int32)
-        dyn_batch_valid_length = mutable([0, 0, 0], dynamic_len=True)
+        dyn_batch_valid_length = Tensor(shape=[None, ], dtype=mstype.int32)
+        dyn_q_seq_lens = Tensor(shape=[None, ], dtype=mstype.int32)
         dyn_slot_mapping = Tensor(shape=[None, ], dtype=mstype.int32)
         dyn_block_tables = Tensor(shape=[None, None], dtype=mstype.int32)
         dyn_intermediate_tensors = None
@@ -187,16 +219,28 @@ class MsModelBase():
         self.model.set_inputs(
             dyn_input_ids,
             dyn_position_ids,
-            dyn_kv_caches,
+            dyn_key_caches,
+            dyn_value_caches,
             dyn_num_prefill_tokens,
             dyn_num_decode_tokens,
-            dyn_context_lens,
             dyn_batch_valid_length,
+            dyn_q_seq_lens,
             dyn_slot_mapping,
             dyn_block_tables,
             dyn_intermediate_tensors,
             dyn_inputs_embeds
         )
+
+    def get_kvcache(self):
+        key_cache = []
+        value_cache = []
+        forward_context = get_forward_context()
+        for i in range(self.config.num_hidden_layers):
+            k_cache = self.kv_caches[i].kv_cache[forward_context.virtual_engine][0]
+            v_cache = self.kv_caches[i].kv_cache[forward_context.virtual_engine][1]
+            key_cache.append(k_cache)
+            value_cache.append(v_cache)
+        return mutable(key_cache), mutable(value_cache)
 
     @abstractmethod
     def compute_logits(

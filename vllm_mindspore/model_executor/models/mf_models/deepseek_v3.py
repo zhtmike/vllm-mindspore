@@ -123,6 +123,8 @@ class DeepseekV3ForCausalLM(MfModelBase):
             weight_processor = DeepseekV3WeightProcessor(self.mf_config, self.network, self.is_quant)
             weight_processor.load_safetensors_shard(self.mf_config.load_checkpoint)
         self.network.set_dynamic_inputs()
+        dynamic_hidden_states = Tensor(shape=[None, None], dtype=self.mf_model_config.compute_dtype)
+        self.lm_head.set_inputs(dynamic_hidden_states)
         return None
 
     def get_model_path(self):

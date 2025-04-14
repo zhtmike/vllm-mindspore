@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(AscendC_Kernels)
 
 # Parameters passed from command line or default values
-set(RUN_MODE "npu" CACHE STRING "cpu/sim/npu")
+set(RUN_MODE "npu")
 set(SOC_VERSION "Ascend910B1" CACHE STRING "system on chip type")
 set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type Release/Debug")
 
@@ -21,11 +21,11 @@ endif()
 # Include Ascend CANN CMake file
 include(${ASCENDC_CMAKE_DIR}/ascendc.cmake)
 
-# Add source files
-file(GLOB KERNEL_FILES ${CMAKE_CURRENT_SOURCE_DIR}/adv_step_flash.c)
+# Collect source files
+file(GLOB ASCENDC_KERNEL_FILES ${CMAKE_CURRENT_SOURCE_DIR}/*.c)
 
-# Build shared library
-ascendc_library(ascendc_kernels_${RUN_MODE} SHARED ${KERNEL_FILES})
+# Create an object library
+ascendc_library(ascendc_kernels_npu STATIC ${ASCENDC_KERNEL_FILES})
 
-# Set the output directory
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lib)
+set(ASCENDC_TARGET_NAME ascendc_kernels_npu PARENT_SCOPE)
+set(ASCENDC_TARGET_DIR "${CMAKE_BINARY_DIR}/lib" PARENT_SCOPE)

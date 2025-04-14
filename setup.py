@@ -26,9 +26,9 @@ from typing import List
 from pathlib import Path
 from setuptools import find_packages, setup
 from setuptools.command.build_ext import build_ext
-from setuptools.command.install import install
 from setuptools import Extension
 import subprocess
+import warnings
 
 
 def load_module_from_path(module_name, path):
@@ -93,46 +93,50 @@ version = (Path("vllm_mindspore") / "version.txt").read_text()
 def _get_ascend_home_path():
     return os.environ.get("ASCEND_HOME_PATH", "/usr/local/Ascend/ascend-toolkit/latest")
 
+def _get_ascend_env_path(check_exists=True):
+    env_script_path = os.path.join(_get_ascend_home_path(), "bin", "setenv.bash")
+    if check_exists and not os.path.exists(env_script_path):
+        warnings.warn(f"The file '{env_script_path}' is not found, "
+                            "please make sure env variable 'ASCEND_HOME_PATH' is set correctly.")
+        return None
+    return env_script_path
+
 class CustomBuildExt(build_ext):
     ROOT_DIR = os.path.abspath(os.path.dirname(__file__))
-    ASCENDC_OPS_DIR = os.path.join(ROOT_DIR, "vllm_mindspore", "ops", "ascendc")
 
     def build_extension(self, ext):
-        if ext.name == "ascendc_kernels_npu":
-            self.build_ascendc_kernels()
-        elif ext.name == "npu_ops":
+        if ext.name == "vllm_mindspore.npu_ops":
             self.build_npu_ops(ext)
         else:
             raise ValueError(f"Unknown extension name: {ext.name}")
 
-    def build_ascendc_kernels(self):
-        kernel_so_name = "libascendc_kernels_npu.so"
-        print(f"Building {kernel_so_name}...")
-        tmp_build_dir = os.path.join(self.ASCENDC_OPS_DIR, "build")
-        if os.path.exists(tmp_build_dir):
-            print(f"Removing existing build directory: {tmp_build_dir}")
-            shutil.rmtree(tmp_build_dir)
-        os.makedirs(tmp_build_dir, exist_ok=True)
+    def build_npu_ops(self, ext):
+        # "vllm_mindspore.npu_ops" --> "npu_ops"
+        ext_name = ext.name.split('.')[-1]
+        so_name = ext_name + ".so"
+        print(f"Building {so_name} ...")
+        OPS_DIR = os.path.join(ROOT_DIR, "vllm_mindspore", "ops")
+        BUILD_OPS_DIR = os.path.join(ROOT_DIR, "build", "ops")
+        os.makedirs(BUILD_OPS_DIR, exist_ok=True)
 
         ascend_home_path = _get_ascend_home_path()
-        env_script_path = os.path.join(ascend_home_path, "bin", "setenv.bash")
-        if not os.path.exists(env_script_path):
-            raise RuntimeError(f"The file '{env_script_path}' is not found, "
-                               "please make sure env variable 'ASCEND_HOME_PATH' is set correctly.")
+        env_script_path = _get_ascend_env_path(False)
+        build_extension_dir = os.path.join(BUILD_OPS_DIR, "kernel_meta", ext_name)
         # Combine all cmake commands into one string
         cmake_cmd = (
             f"source {env_script_path} && "
-            f"cmake -S {self.ASCENDC_OPS_DIR} -B {tmp_build_dir} "
-            f"-DRUN_MODE=npu -DCMAKE_BUILD_TYPE=Debug "
-            f"-DCMAKE_INSTALL_PREFIX={os.path.join(tmp_build_dir, 'install')} "
-            f"-DASCEND_CANN_PACKAGE_PATH={ascend_home_path} && "
-            f"cmake --build {tmp_build_dir} -j --verbose && "
-            f"cmake --install {tmp_build_dir}"
+            f"cmake -S {OPS_DIR} -B {BUILD_OPS_DIR}"
+            f"  -DCMAKE_BUILD_TYPE=Release"
+            f"  -DCMAKE_INSTALL_PREFIX={os.path.join(BUILD_OPS_DIR, 'install')}"
+            f"  -DBUILD_EXTENSION_DIR={build_extension_dir}"
+            f"  -DMS_EXTENSION_NAME={ext_name}"
+            f"  -DASCEND_CANN_PACKAGE_PATH={ascend_home_path} && "
+            f"cmake --build {BUILD_OPS_DIR} -j --verbose"
         )
 
         try:
             # Run the combined cmake command
-            print("Running combined CMake commands:")
+            print(f"Running combined CMake commands:\n{cmake_cmd}")
             result = subprocess.run(cmake_cmd, cwd=self.ROOT_DIR, text=True, shell=True, capture_output=True)
             if result.returncode != 0:
                 print("CMake commands failed:")
@@ -140,49 +144,16 @@ class CustomBuildExt(build_ext):
                 print(result.stderr)  # Print error output
                 raise RuntimeError(f"Combined CMake commands failed with exit code {result.returncode}")
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Failed to build {kernel_so_name}: {e}")
+            raise RuntimeError(f"Failed to build {so_name}: {e}")
 
-        # Move the generated .so file to the target directory
-        src_so_path = os.path.join(tmp_build_dir, "lib", kernel_so_name)
-        lib_dir = os.path.join(self.ROOT_DIR, self.build_lib, "vllm_mindspore", "lib")
-        dst_so_path = os.path.join(lib_dir, kernel_so_name)
-        os.makedirs(lib_dir, exist_ok=True)
+        # Copy the generated .so file to the target directory
+        src_so_path = os.path.join(build_extension_dir, so_name)
+        dst_so_path = self.get_ext_fullpath(ext.name)
+        os.makedirs(os.path.dirname(dst_so_path), exist_ok=True)
         if os.path.exists(dst_so_path):
             os.remove(dst_so_path)
-        shutil.move(src_so_path, dst_so_path)
-        print(f"Moved {kernel_so_name} to {lib_dir}.")
-        # Remove the build directory after building kernels.so
-        shutil.rmtree(tmp_build_dir)
-
-    def build_npu_ops(self, ext):
-        print("Building npu_ops.so ...")
-        try:
-            import mindspore as ms
-        except ImportError:
-            print("Mindspore is not found, skip building npu_ops.so")
-            return
-        try:
-            src = [os.path.join(self.ASCENDC_OPS_DIR, s) for s in ext.sources]
-            build_lib_dir = os.path.join(self.ROOT_DIR, self.build_lib, "vllm_mindspore")
-            ms.ops.CustomOpBuilder(
-                "npu_ops",
-                src,
-                backend="Ascend",
-                cflags=f"-I{self.ASCENDC_OPS_DIR}",
-                ldflags=f"-L{os.path.join(build_lib_dir, 'lib')} -lascendc_kernels_npu -Wl,-rpath,'$$ORIGIN/lib'"
-            ).load()
-        except ImportError:
-            pass
-        # Move the generated .so file to the target directory
-        kernel_meta_dir = os.path.join(self.ROOT_DIR, "kernel_meta")
-        src_so_path = os.path.join(kernel_meta_dir, "npu_ops", "npu_ops.so")
-        dst_so_path = os.path.join(build_lib_dir, "npu_ops.so")
-        os.makedirs(build_lib_dir, exist_ok=True)
-        if os.path.exists(dst_so_path):
-            os.remove(dst_so_path)
-        shutil.move(src_so_path, build_lib_dir)
-        print(f"Moved npu_ops.so to {build_lib_dir}.")
-        shutil.rmtree(kernel_meta_dir)
+        shutil.copy(src_so_path, dst_so_path)
+        print(f"Copied {so_name} to {dst_so_path}")
 
 package_data = {
     "": [
@@ -197,11 +168,8 @@ def _get_ext_modules():
     # As a temporary solution, this is controlled via an environment variable.
     # Once the CI environment adds support for custom operator compilation,
     # this should be updated to enable compilation by default.
-    if os.getenv("vLLM_USE_NPU_ADV_STEP_FLASH_OP", "off") == "on":
-        ext_modules.append(Extension("ascendc_kernels_npu", sources=[]))
-        ext_modules.append(Extension("npu_ops", sources=[
-            "adv_step_flash_adapter.cpp"
-        ]))
+    if os.getenv("vLLM_USE_NPU_ADV_STEP_FLASH_OP", "off") == "on" and _get_ascend_env_path() is not None:
+        ext_modules.append(Extension("vllm_mindspore.npu_ops", sources=[])) # sources are specified in CMakeLists.txt
     return ext_modules
 
 setup(

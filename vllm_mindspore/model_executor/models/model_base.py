@@ -187,7 +187,7 @@ class MsModelBase():
     ) -> Union[Tensor, IntermediateTensors]:
         raise NotImplementedError
 
-    def set_model_inputs(self):
+    def set_model_inputs(self, is_prefill):
         dyn_input_ids = Tensor(shape=[None, None], dtype=mstype.int64)
         dyn_position_ids = Tensor(shape=[None], dtype=mstype.int64)
 
@@ -207,8 +207,6 @@ class MsModelBase():
         dyn_key_caches = mutable([dyn_key_cache for _ in range(num_layers)])
         dyn_value_caches = mutable([dyn_value_cache for _ in range(num_layers)])
 
-        dyn_num_prefill_tokens = mutable(1)
-        dyn_num_decode_tokens = mutable(0)
         dyn_batch_valid_length = Tensor(shape=[None, ], dtype=mstype.int32)
         dyn_q_seq_lens = Tensor(shape=[None, ], dtype=mstype.int32)
         dyn_slot_mapping = Tensor(shape=[None, ], dtype=mstype.int32)
@@ -221,11 +219,10 @@ class MsModelBase():
             dyn_position_ids,
             dyn_key_caches,
             dyn_value_caches,
-            dyn_num_prefill_tokens,
-            dyn_num_decode_tokens,
+            is_prefill,
+            dyn_slot_mapping,
             dyn_batch_valid_length,
             dyn_q_seq_lens,
-            dyn_slot_mapping,
             dyn_block_tables,
             dyn_intermediate_tensors,
             dyn_inputs_embeds

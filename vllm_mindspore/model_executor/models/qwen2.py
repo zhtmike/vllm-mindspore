@@ -25,7 +25,7 @@ else:
 
 import numpy as np
 
-from mindspore import Parameter, Tensor, mint, nn, jit, mutable
+from mindspore import Parameter, Tensor, mint, nn, jit, ops
 from mindspore.common import dtype as mstype
 
 
@@ -183,8 +183,7 @@ class Qwen2Attention(nn.Cell):
         hidden_states: Tensor,
         key_cache: Tensor,
         value_cache: Tensor,
-        num_prefill_tokens: int,
-        num_decode_tokens: int,
+        is_prefill: bool,
         slot_mapping: Tensor,
         batch_valid_length: Tuple[int],
         q_seq_lens: Tensor,
@@ -192,9 +191,9 @@ class Qwen2Attention(nn.Cell):
     ) -> Tensor:
         qkv, _ = self.qkv_proj(hidden_states)
         q, k, v = mint.split(qkv, (self.q_size, self.kv_size, self.kv_size), -1)
-        q, k = self.rotary_emb(positions, q, k, q_seq_lens, num_prefill_tokens)
-        attn_output = self.attn(q, k, v, key_cache, value_cache, num_prefill_tokens, num_decode_tokens,
-                                slot_mapping, batch_valid_length, q_seq_lens, block_tables, self.attn_mask, self.hard_mask)
+        q, k = self.rotary_emb(positions, q, k, q_seq_lens, is_prefill)
+        attn_output = self.attn(q, k, v, key_cache, value_cache, is_prefill, slot_mapping, batch_valid_length,
+                                q_seq_lens, block_tables, self.attn_mask, self.hard_mask)
         output, _ = self.o_proj(attn_output)
         return output
 
@@ -256,8 +255,7 @@ class Qwen2DecoderLayer(nn.Cell):
         hidden_states: Tensor,
         key_cache: Tensor,
         value_cache: Tensor,
-        num_prefill_tokens: int,
-        num_decode_tokens: int,
+        is_prefill: bool,
         slot_mapping: Tensor,
         batch_valid_length: Tuple[int],
         q_seq_lens: Tensor,
@@ -275,8 +273,7 @@ class Qwen2DecoderLayer(nn.Cell):
             hidden_states,
             key_cache,
             value_cache,
-            num_prefill_tokens,
-            num_decode_tokens,
+            is_prefill,
             slot_mapping,
             batch_valid_length,
             q_seq_lens,
@@ -341,10 +338,9 @@ class Qwen2Model(nn.Cell):
         self,
         input_ids: Optional[Tensor],
         positions: Tensor,
-        key_caches: List[Tensor], 
+        key_caches: List[Tensor],
         value_caches: List[Tensor],
-        num_prefill_tokens: int,
-        num_decode_tokens: int,
+        is_prefill: bool,
         slot_mapping: Tensor,
         batch_valid_length: Tensor,
         q_seq_lens: Tensor,
@@ -369,8 +365,7 @@ class Qwen2Model(nn.Cell):
                 hidden_states,
                 key_caches[i - self.start_layer],
                 value_caches[i - self.start_layer],
-                num_prefill_tokens,
-                num_decode_tokens,
+                is_prefill,
                 slot_mapping,
                 batch_valid_length,
                 q_seq_lens,
@@ -490,7 +485,8 @@ class Qwen2ForCausalLM(MsModelBase):
             self.model.make_empty_intermediate_tensors)
         self.set_modules({"model": self.model, "lm_head": self.lm_head})
 
-        self.set_model_inputs()
+        self.prefill = True
+        self.set_model_inputs(self.prefill)
         self.kv_caches = [Fake_Attention() for i in range(config.num_hidden_layers)]
         compilation_config = vllm_config.compilation_config
 
@@ -513,12 +509,31 @@ class Qwen2ForCausalLM(MsModelBase):
         **kwargs
     ) -> Union[Tensor, IntermediateTensors]:
         key_cache, value_cache = self.get_kvcache()
-        if attn_metadata.num_prefill_tokens > 0:
-            input_ids = input_ids.expand_dims(0)
-        if attn_metadata.num_decode_tokens > 0:
-            input_ids = input_ids.expand_dims(1)
-        num_prefill_tokens = mutable(attn_metadata.num_prefill_tokens)
-        num_decode_tokens = mutable(attn_metadata.num_decode_tokens)
+        seq_lens = attn_metadata.seq_lens
+        max_query_len = attn_metadata.max_query_len
+        # When Mutli-Step is enabled with Chunked-Prefill, prefills and
+        # decodes are scheduled together. In the first step, all the
+        # prefills turn into decodes and max_query_len will be 1.
+        if self.is_multi_step_chunked_prefill and max_query_len == 1:
+            query_lens = [1] * len(seq_lens)
+        else:
+            query_lens = attn_metadata.query_lens
+
+        seq_lens_np = np.array(seq_lens, dtype=np.int32)
+        query_lens_np = np.array(query_lens, dtype=np.int32)
+        kv_cache_lens = seq_lens_np - query_lens_np
+        is_prefill = attn_metadata.num_decode_tokens == 0 and kv_cache_lens.max() == 0
+        if is_prefill:
+            input_ids = ops.expand_dims(input_ids, 0)
+            if not self.prefill:
+                self.prefill = True
+                self.set_model_inputs(self.prefill)
+        else:
+            input_ids = ops.expand_dims(input_ids, 1)
+            if self.prefill:
+                self.prefill = False
+                self.set_model_inputs(self.prefill)
+
         slot_mapping = attn_metadata.slot_mapping
         batch_valid_length = Tensor.from_numpy(np.array(attn_metadata.seq_lens, dtype=np.int32))
         q_seq_lens = Tensor.from_numpy(np.array(attn_metadata.query_lens, dtype=np.int32))
@@ -527,18 +542,17 @@ class Qwen2ForCausalLM(MsModelBase):
                                   positions,
                                   key_cache,
                                   value_cache,
-                                  num_prefill_tokens,
-                                  num_decode_tokens,
+                                  is_prefill,
                                   slot_mapping,
                                   batch_valid_length,
                                   q_seq_lens,
                                   block_tables,
-                                  intermediate_tensors=intermediate_tensors,
-                                  inputs_embeds=inputs_embeds)
-        if attn_metadata.num_prefill_tokens > 0:
-            model_output = model_output.squeeze(0)
-        if attn_metadata.num_decode_tokens > 0:
-            model_output = model_output.squeeze(1)
+                                  intermediate_tensors,
+                                  inputs_embeds)
+        if is_prefill:
+            model_output = ops.squeeze(model_output, 0)
+        else:
+            model_output = ops.squeeze(model_output, 1)
         return model_output
 
     def load_weights(self, weights: Iterable[Tuple[str, Tensor]]) -> Set[str]:

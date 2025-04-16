@@ -156,6 +156,7 @@ class InferRotaryEmbedding(CustomOp):
         self.freqs_cos = Tensor(freqs_cos, dtype=dtype)
         self.freqs_sin = Tensor(freqs_sin, dtype=dtype)
         self.rotary_embedding_op = ops.ApplyRotaryPosEmb(2)
+        self.gather = ops.Gather()
 
     def forward_native(
         self,
@@ -163,14 +164,14 @@ class InferRotaryEmbedding(CustomOp):
         query: Tensor,
         key: Tensor,
         batch_valid_length: Tensor,
-        num_prefill_tokens: int,
+        is_prefill: bool,
         offsets: Optional[Tensor] = None,
     ) -> Tuple[Tensor, Tensor]:
-        if num_prefill_tokens > 0:
+        if is_prefill:
             return self.rotary_embedding_op(query, key, self.freqs_cos, self.freqs_sin, batch_valid_length)
 
-        freqs_cos = self.freqs_cos.index_select(0, positions)
-        freqs_sin = self.freqs_sin.index_select(0, positions)
+        freqs_cos = self.gather(self.freqs_cos, positions, 0)
+        freqs_sin = self.gather(self.freqs_sin, positions, 0)
         return self.rotary_embedding_op(query, key, freqs_cos, freqs_sin, batch_valid_length)
 
 

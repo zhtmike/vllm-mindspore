@@ -40,6 +40,7 @@ from mindformers.core.context import build_context
 from mindformers.core.parallel_config import build_parallel_config
 
 from vllm_mindspore.model_executor.models.model_base import MsModelBase
+from vllm_mindspore.model_executor.models.mf_models.attention_mask import LowerTriangularMask
 
 logger = init_logger(__name__)
 
@@ -72,8 +73,8 @@ class MfModelBase(MsModelBase):
             get_tensor_model_parallel_world_size()
         )
         self.mf_config.model.model_config.parallel_config.pipeline_stage = 1
-
         self._generate_model_config()
+        self.casual_mask = LowerTriangularMask(mf_model_config=self.mf_model_config)
         self.network, self.lm_head = self._create_network()
 
         self.network.construct = MethodType(ms.jit(self.network.__class__.construct,

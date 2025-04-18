@@ -36,7 +36,7 @@ from mindspore import Tensor, mutable
 from mindspore.common.api import _pynative_executor
 
 from mindformers.tools.register.config import MindFormerConfig
-from mindformers.core.context import build_context
+from mindformers.core.context import build_mf_context
 from mindformers.core.parallel_config import build_parallel_config
 
 from vllm_mindspore.model_executor.models.model_base import MsModelBase
@@ -55,7 +55,6 @@ def _batch_seq(input_tokens, prefill):
     return ms.mint.reshape(input_tokens, (-1, 1)).to(ms.int32)
 
 
-
 class MfModelBase(MsModelBase):
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
         super(MfModelBase, self).__init__(
@@ -63,7 +62,7 @@ class MfModelBase(MsModelBase):
         )
 
         self.mf_config = MindFormerConfig(os.getenv("MINDFORMERS_MODEL_CONFIG"))
-        build_context(self.mf_config, is_set_ms_ctx=False, is_init_ms=False)
+        build_mf_context(self.mf_config)
         build_parallel_config(self.mf_config)
         self.mf_config.model.model_config.parallel_config = (
             self.mf_config.parallel_config
@@ -75,13 +74,9 @@ class MfModelBase(MsModelBase):
 
         self._generate_model_config()
         self.network, self.lm_head = self._create_network()
-
-        self.network.construct = MethodType(ms.jit(self.network.__class__.construct,
-                                                   jit_level='O0', infer_boost='on'),
-                                            self.network)
-        self.lm_head.construct = MethodType(ms.jit(self.lm_head.__class__.construct,
-                                                   jit_level='O0', infer_boost='on'),
-                                            self.lm_head)
+        affinity_config = self.mf_config.get('context', {}).get('affinity_cpu_list', {})
+        if isinstance(affinity_config, dict):
+            ms.runtime.set_cpu_affinity(True, affinity_config)
 
     @abstractmethod
     def _generate_model_config(self):

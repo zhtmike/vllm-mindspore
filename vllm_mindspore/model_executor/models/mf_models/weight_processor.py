@@ -72,6 +72,11 @@ class BaseWeightProcessor:
             start = self.rank_id * split_size
             stop = (self.rank_id + 1) * split_size
             split_data = np_data[:, start:stop]
+        elif split_axis == 2:
+            split_size = shape[2] // self.tp_group_size
+            start = self.rank_id * split_size
+            stop = (self.rank_id + 1) * split_size
+            split_data = np_data[:, :, start:stop]
         else:
             raise ValueError("split_axis:{} is not supported.".format(split_axis))
         return split_data, qint4

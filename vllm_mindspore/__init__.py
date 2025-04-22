@@ -215,4 +215,8 @@ vllm.model_executor.layers.rejection_sampler._multinomial = _multinomial
 
 from .utils import check_ready
 
+from vllm_mindspore.engine.multiprocessing.engine import cleanup
+import vllm.engine.multiprocessing.engine
+vllm.engine.multiprocessing.engine.MQLLMEngine.cleanup = cleanup
+
 check_ready()

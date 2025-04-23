@@ -155,14 +155,13 @@ class Attention(nn.Cell):
         value: Tensor,
         key_cache: Tensor,
         value_cache: Tensor,
-        num_prefill_tokens: bool,
-        num_decode_tokens: int,
+        is_prefill: bool,
         slot_mapping: Tensor,
         batch_valid_length: Tuple[int],
         q_seq_lens: Tensor,
         block_tables: Tensor,
         attn_mask: Tensor,
-        decode_mask:Tensor,
+        decode_mask: Tensor,
     ) -> Tensor:
         """Attention foward, support MHA and GQA.
 
@@ -178,10 +177,10 @@ class Attention(nn.Cell):
         output = query
         cache_out = self.reshape_and_cache(key, value, key_cache, value_cache, slot_mapping)
         query = ops.depend(query, cache_out)
-        if num_prefill_tokens > 0:
+        if is_prefill:
             output = self._run_prefill_forward(query, key, value, attn_mask, batch_valid_length, batch_valid_length)
-        if num_decode_tokens > 0:
-            output = self._run_decode_forward(query, key_cache, value_cache, block_tables,batch_valid_length,
+        else:
+            output = self._run_decode_forward(query, key_cache, value_cache, block_tables, batch_valid_length,
                                               decode_mask, q_seq_lens)
         return output
 
@@ -229,7 +228,7 @@ class Attention(nn.Cell):
         value_cache: Tensor,
         block_tables: Tensor,
         batch_valid_length: Tensor,
-        decode_mask:Tensor,
+        decode_mask: Tensor,
         q_seq_lens: Tensor,
     ) -> Tensor:
         """Decode with PagedAttention.

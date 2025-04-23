@@ -21,8 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 import mindspore.nn as nn
-from mindspore import Tensor
-from mindspore import mint
+from mindspore import Tensor, ops, mint, nn
 
 import vllm.envs as envs
 from vllm.config import get_current_vllm_config
@@ -148,7 +147,7 @@ def _prune_hidden_states(
     # (warmup, profile_run) we might not have selected_token_indices,
     # so we skip pruning.
     if sampling_metadata.selected_token_indices is not None:
-        return hidden_states.index_select(0, sampling_metadata.selected_token_indices)
+        return ops.gather(hidden_states, sampling_metadata.selected_token_indices, 0)
     else:
         return hidden_states
 

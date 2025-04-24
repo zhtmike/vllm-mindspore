@@ -17,7 +17,6 @@
 
 import contextlib
 import gc
-import logging
 import os
 import sys
 from typing import (TYPE_CHECKING, Callable, Generator, List, Optional, Tuple,
@@ -31,6 +30,8 @@ if TYPE_CHECKING:
 else:
     Library = None
 
+from vllm.logger import init_logger
+
 import mindspore as ms
 from mindspore import dtype as mstype
 from mindspore.common.initializer import Zero
@@ -41,7 +42,7 @@ from .scripts import env_setup
 
 MsKVCache = Tuple[ms.Tensor, ms.Tensor]
 
-logger = logging.getLogger(__name__)
+logger = init_logger(__name__)
 
 STR_DTYPE_TO_MS_DTYPE = {
     "half": ms.float16,
@@ -267,7 +268,11 @@ def convert_np_to_ms_dtype(value):
 
 # Replace the directly loaded module in vllm, such as 'from module import xxx'
 def update_modules(name, module):
+<<<<<<< HEAD
     logger.info(f"replace module {0} by {1}".format(name, module))
+=======
+    logger.debug(f"replace module {name} by {module}")
+>>>>>>> update log config
     sys.modules.update({name: module})
 
 

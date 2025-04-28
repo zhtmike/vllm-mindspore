@@ -58,6 +58,19 @@ from vllm_mindspore.model_executor.models.attention_mask import MLALowerTriangul
 logger = init_logger(__name__)
 
 
+def set_runtime_kernel_launch_group():
+    kernel_launch_group = {'thread_num': 2, 'kernel_group_num': 8}
+    env_kernel_launch_group = os.getenv("EXPERIMENTAL_KERNEL_LAUNCH_GROUP", None)
+    if env_kernel_launch_group is not None:
+        pairs = env_kernel_launch_group.split(',')
+        for pair in pairs:
+            key, val = pair.split(':')
+            kernel_launch_group[key] = val
+    thread_num = int(kernel_launch_group.get('thread_num', 2))
+    kernel_group_num = int(kernel_launch_group.get('kernel_group_num', 8))
+    ms.runtime.set_kernel_launch_group(thread_num=thread_num, kernel_group_num=kernel_group_num)
+
+
 def _get_padding_index(q_seq_len):
     dp_size = get_dp_group().world_size
     tp_size = get_tensor_model_parallel_world_size()
@@ -86,18 +99,19 @@ def _get_padding_index(q_seq_len):
         if dp_rank == 0:
             attn_unpadding_idx = arange_data
             last_arange_index = arange_data[-1]
-            ffn_padding_idx= np.pad(attn_unpadding_idx, (0, padding_size - attn_unpadding_idx.shape[0]),
-                                    mode='constant', constant_values=0)
+            ffn_padding_idx = np.pad(attn_unpadding_idx, (0, padding_size - attn_unpadding_idx.shape[0]),
+                                     mode='constant', constant_values=0)
         else:
             attn_offset_idx = arange_data + padding_size * dp_rank
             attn_unpadding_idx = np.concatenate((attn_unpadding_idx, attn_offset_idx), axis=0)
             ffn_offset_idx = arange_data + last_arange_index + 1
             last_arange_index = ffn_offset_idx[-1]
-            ffn_offset_idx_pad_zero =  np.pad(
+            ffn_offset_idx_pad_zero = np.pad(
                 ffn_offset_idx, (0, padding_size - ffn_offset_idx.shape[0]), mode='constant', constant_values=0)
             ffn_padding_idx = np.concatenate((ffn_padding_idx, ffn_offset_idx_pad_zero), axis=0)
     return ms.from_numpy(attn_padding_idx), ms.from_numpy(attn_unpadding_idx), ms.from_numpy(ffn_padding_idx), \
-        ms.from_numpy(ffn_unpadding_idx)
+           ms.from_numpy(ffn_unpadding_idx)
+
 
 
 class DeepseekV3ForCausalLM(MfModelBase):
@@ -143,7 +157,8 @@ class DeepseekV3ForCausalLM(MfModelBase):
             network = DeepseekV3ForCausalLM_MF(self.mf_model_config)
 
         # quant
-        if hasattr(self.mf_model_config, "quantization_config") and hasattr(self.mf_model_config.quantization_config, "quant_method"):
+        if hasattr(self.mf_model_config, "quantization_config") and hasattr(self.mf_model_config.quantization_config,
+                                                                            "quant_method"):
             ptq = self.create_ptq(self.mf_model_config.quantization_config.quant_method, PTQMode.DEPLOY)
             if ptq is not None:
                 ptq.apply(network)

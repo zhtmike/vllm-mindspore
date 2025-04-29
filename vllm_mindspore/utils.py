@@ -213,6 +213,13 @@ def is_mindformers_model_backend():
     )
 
 
+def is_mindway_model_backend():
+    return (
+        os.getenv("vLLM_MODEL_BACKEND")
+        and os.environ["vLLM_MODEL_BACKEND"] == "MindWAY"
+    )
+
+
 def check_ready():
     import vllm.envs as envs
     from mindspore import set_context
@@ -241,6 +248,8 @@ def check_ready():
             "MS_INTERNAL_DISABLE_CUSTOM_KERNEL_LIST": "FlashAttentionScore,PagedAttention",
         }
         env_setup(mindformers_default_env)
+    elif is_mindway_model_backend():
+        logger.info("Run with MindWAY backend!")
     else:
         logger.info("Run with native model backend!")
 

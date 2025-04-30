@@ -79,7 +79,4 @@ class Qwen2ForCausalLM(MfModelBase):
         weight_processor = Qwen2WeightProcessor(self.mf_config, self.network, False)
         weight_processor.load_safetensors_shard(self.mf_config.load_checkpoint)
 
-        self.network.set_dynamic_inputs()
-        dynamic_hidden_states = Tensor(shape=[None, None], dtype=self.mf_model_config.compute_dtype)
-        self.lm_head.set_inputs(dynamic_hidden_states)
         return None

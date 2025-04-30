@@ -79,6 +79,8 @@ class MfModelBase(MsModelBase):
         if isinstance(affinity_config, dict):
             ms.runtime.set_cpu_affinity(True, affinity_config)
 
+        self._set_dynamic_inputs()
+
     @abstractmethod
     def _generate_model_config(self):
         raise NotImplementedError("Function _generate_model_config should be Implemented!")
@@ -87,6 +89,10 @@ class MfModelBase(MsModelBase):
     def _create_network(self):
         raise NotImplementedError("Function _create_network should be Implemented!")
 
+    def _set_dynamic_inputs(self):
+        self.network.set_dynamic_inputs()
+        dynamic_hidden_states = Tensor(shape=[None, None], dtype=self.mf_model_config.compute_dtype)
+        self.lm_head.set_inputs(dynamic_hidden_states)
 
     def prepare_inputs(self, input_ids, positions, attn_metadata):
         key_cache, value_cache = self.get_kvcache()

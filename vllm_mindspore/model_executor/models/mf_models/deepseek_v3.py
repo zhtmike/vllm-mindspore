@@ -200,6 +200,18 @@ class DeepseekV3ForCausalLM(MfModelBase):
                                    act_quant_granularity=QuantGranularity.PER_TOKEN,
                                    weight_quant_granularity=QuantGranularity.PER_CHANNEL)
             layer_policies = OrderedDict({r'.*\.feed_forward\..*': ffn_config})
+        elif quant_type.lower() == 'osl':
+            cfg = PTQConfig(mode=quant_mode, backend=BackendTarget.ASCEND, weight_quant_dtype=msdtype.int8,
+                            act_quant_dtype=msdtype.int8,
+                            outliers_suppression=OutliersSuppressionType.OUTLIER_SUPPRESSION_LITE,
+                            opname_blacklist=['lm_head', 'lkv2kv'])
+            ffn_config = PTQConfig(mode=quant_mode, backend=BackendTarget.ASCEND, weight_quant_dtype=msdtype.int8,
+                                   act_quant_dtype=msdtype.int8,
+                                   outliers_suppression=OutliersSuppressionType.NONE,
+                                   precision_recovery=PrecisionRecovery.NONE,
+                                   act_quant_granularity=QuantGranularity.PER_TOKEN,
+                                   weight_quant_granularity=QuantGranularity.PER_CHANNEL)
+            layer_policies = OrderedDict({r'.*\.feed_forward\..*': ffn_config})
         elif quant_type.lower() == 'a16w8':
             cfg = PTQConfig(mode=quant_mode, backend=BackendTarget.ASCEND, weight_quant_dtype=msdtype.int8,
                             opname_blacklist=['lm_head', 'lkv2kv'])

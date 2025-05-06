@@ -18,6 +18,8 @@ Qwen 大模型系列的新一代版本 —— Qwen3，在自然语言处理和�
 
 ## 快速开始
 
+当前支持的硬件为Atlas 800T A2服务器
+
 ### 下载模型权重
 执行以下命令为自定义下载路径`/home/qwen3`添加白名单：
 
@@ -70,7 +72,7 @@ docker run -itd --privileged  --name=qwen3 --net=host \
    -v /usr/local/sbin/npu-smi:/usr/local/sbin/npu-smi \
    -v /usr/local/sbin:/usr/local/sbin \
    -v /etc/hccn.conf:/etc/hccn.conf \
-   -v /home:/home \
+   -v /home/qwen3:/home/qwen3 \
    swr.cn-central-221.ovaijisuan.com/mindsporelab/mindspore2.6.0-cann7.6.0.1-python3.11-openeuler22.03:v1 \
    bash
 ```

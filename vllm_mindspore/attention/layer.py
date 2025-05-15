@@ -247,7 +247,7 @@ class Attention(nn.Cell):
             batch_valid_length,
             None,
             None,
-            attn_mask * -10000,
+            attn_mask,
             q_seq_lens
         )
         return output

@@ -70,7 +70,7 @@ class TestMfQwen_prefix_caching:
         outputs = llm.generate(prompts, sampling_params)
         second_outputs = llm.generate(second_prompts, sampling_params)
         except_list=[' many times and each time I have found something new']
-        second_except_list=[' to visit, such as the Forbidden City, the']
+        second_except_list=[' in Beijing, but I have to say that the']
         for i, (output, second_output) in enumerate(zip(outputs, second_outputs)):
             generated_text = output.outputs[i].text
             print(f"Output1 - Prompt: {prompts[i]!r}, Generated text: {generated_text!r}")

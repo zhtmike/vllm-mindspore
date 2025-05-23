@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# encoding: utf-8
 # Copyright 2025 Huawei Technologies Co., Ltd
 # Copyright 2024 The vLLM team.
 #
@@ -16,65 +15,73 @@
 # limitations under the License.
 # ============================================================================
 """Inference-only Qwen2.5-VL model compatible with HuggingFace weights."""
+# yapf:disable
 from functools import cached_property, partial
-from typing import Any, Iterable, List, Mapping, Optional, Set, Tuple, Union
-import numpy as np
+from typing import Any, Iterable, List, Mapping, Optional, Tuple, Union
 
 import mindspore
-import mindspore.mint as mint
-from mindspore import ops, nn, Tensor, mutable
+import numpy as np
+from mindone.transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
+    Qwen2_5_VisionTransformerPretrainedModel)
+from mindone.transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
+    Qwen2_5_VLForConditionalGeneration as MindONE_Qwen2_5_VLForConditionalGeneration)
+from mindone.transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
+    Qwen2_5_VLPreTrainedModel)
+from mindspore import Tensor, mint, mutable, nn, ops
 from mindspore.common.api import _pynative_executor
-
-# import from mindway
-from mindway.transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VLForConditionalGeneration as MindWAY_Qwen2_5_VLForConditionalGeneration
-from mindway.transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VisionTransformerPretrainedModel, Qwen2_5_VLPreTrainedModel
-
-# import from vllm
+from vllm.attention.backends.abstract import AttentionMetadata
 from vllm.config import VllmConfig
+from vllm.model_executor.models.qwen2_5_vl import (
+    Qwen2_5_VLConfig, Qwen2_5_VLDummyInputsBuilder)
+from vllm.model_executor.models.qwen2_5_vl import (
+    Qwen2_5_VLForConditionalGeneration as vLLM_Qwen2_5_VLForConditionalGeneration)
+from vllm.model_executor.models.qwen2_5_vl import (
+    Qwen2_5_VLImageEmbeddingInputs, Qwen2_5_VLImageInputs,
+    Qwen2_5_VLImagePixelInputs)
+from vllm.model_executor.models.qwen2_5_vl import (
+    Qwen2_5_VLMultiModalProcessor as vLLM_Qwen2_5_VLMultiModalProcessor)
+from vllm.model_executor.models.qwen2_5_vl import (
+    Qwen2_5_VLProcessingInfo, Qwen2_5_VLVideoEmbeddingInputs,
+    Qwen2_5_VLVideoInputs, Qwen2_5_VLVideoPixelInputs)
 from vllm.multimodal import MULTIMODAL_REGISTRY
-from vllm.sequence import IntermediateTensors
-from vllm.transformers_utils.config import uses_mrope
 from vllm.multimodal.inputs import MultiModalKwargs
 from vllm.multimodal.parse import MultiModalDataItems
 from vllm.multimodal.processing import PromptReplacement
-from vllm.attention.backends.abstract import AttentionMetadata
+from vllm.sequence import IntermediateTensors
+from vllm.transformers_utils.config import uses_mrope
 
-from vllm.model_executor.models.qwen2_5_vl import (
-    Qwen2_5_VLDummyInputsBuilder,
-    Qwen2_5_VLProcessingInfo,
-    Qwen2_5_VLImageInputs,
-    Qwen2_5_VLImagePixelInputs,
-    Qwen2_5_VLImageEmbeddingInputs,
-    Qwen2_5_VLVideoPixelInputs,
-    Qwen2_5_VLVideoEmbeddingInputs,
-    Qwen2_5_VLVideoInputs,
-    Qwen2_5_VLConfig
-)
-from vllm.model_executor.models.qwen2_5_vl import (Qwen2_5_VLMultiModalProcessor 
-                                                   as vLLM_Qwen2_5_VLMultiModalProcessor)
-from vllm.model_executor.models.qwen2_5_vl import (Qwen2_5_VLForConditionalGeneration 
-                                                   as vLLM_Qwen2_5_VLForConditionalGeneration)
-
-# import from vllm-mindspore
-from vllm_mindspore.model_executor.models.interfaces import SupportsMultiModal
-from vllm_mindspore.model_executor.models.utils import maybe_prefix, merge_multimodal_embeddings
 from vllm_mindspore.model_executor.layers.sampler import (SamplerOutput,
                                                           get_sampler)
-from vllm_mindspore.model_executor.sampling_metadata import SamplingMetadata
-from vllm_mindspore.model_executor.models.mindway_models.qwen2 import Qwen2ForCausalLM as vLLM_Qwen2ForCausalLM
-from vllm_mindspore.model_executor.models.mindway_models.qwen2 import vLLMQwen2Model
+from vllm_mindspore.model_executor.models.attention_mask import (
+    LowerTriangularMask)
+from vllm_mindspore.model_executor.models.interfaces import SupportsMultiModal
+from vllm_mindspore.model_executor.models.mindone_models.qwen2 import (
+    MindONEModelBase)
+from vllm_mindspore.model_executor.models.mindone_models.qwen2 import (
+    Qwen2ForCausalLM as vLLM_Qwen2ForCausalLM)
+from vllm_mindspore.model_executor.models.mindone_models.qwen2 import (
+    vLLMQwen2Model)
+from vllm_mindspore.model_executor.models.mindone_models.utils import (
+    enable_dynamic_shape)
 from vllm_mindspore.model_executor.models.model_base import Fake_Attention
-from vllm_mindspore.model_executor.models.mindway_models.qwen2 import MindWAYModelBase
-from vllm_mindspore.model_executor.models.mindway_models.utils import enable_dynamic_shape
+from vllm_mindspore.model_executor.models.utils import (
+    maybe_prefix, merge_multimodal_embeddings)
+from vllm_mindspore.model_executor.sampling_metadata import SamplingMetadata
+from vllm_mindspore.utils import STR_DTYPE_TO_MS_DTYPE
+
+# yapf:enable
 
 
 class Qwen2ForCausalLM(vLLM_Qwen2ForCausalLM):
     # rewrite __init__
-    def __init__(self, mindway_model: nn.Cell, vllm_config: VllmConfig, prefix: str = ""):
-        MindWAYModelBase.__init__(self, vllm_config=vllm_config, prefix=prefix)
+    def __init__(self,
+                 mindone_model: nn.Cell,
+                 vllm_config: VllmConfig,
+                 prefix: str = ""):
+        MindONEModelBase.__init__(self, vllm_config=vllm_config, prefix=prefix)
 
         # create model
-        self.model, self.lm_head = mindway_model.model, mindway_model.lm_head
+        self.model, self.lm_head = mindone_model.model, mindone_model.lm_head
 
         config = vllm_config.model_config.hf_config
         quant_config = vllm_config.quant_config
@@ -85,13 +92,16 @@ class Qwen2ForCausalLM(vLLM_Qwen2ForCausalLM):
         self.sampler = get_sampler()
 
         self.set_modules({"model": self.model, "lm_head": self.lm_head})
-        self.kv_caches = [Fake_Attention() for i in range(config.num_hidden_layers)]
+        self.kv_caches = [
+            Fake_Attention() for i in range(config.num_hidden_layers)
+        ]
         compilation_config = vllm_config.compilation_config
 
         if prefix in compilation_config.static_forward_context:
             raise ValueError(f"Duplicate layer name: {prefix}")
         for i in range(config.num_hidden_layers):
-            compilation_config.static_forward_context[str(i)] = self.kv_caches[i]
+            compilation_config.static_forward_context[str(
+                i)] = self.kv_caches[i]
 
 
 class Qwen2_5_VLMultiModalProcessor(vLLM_Qwen2_5_VLMultiModalProcessor):
@@ -136,16 +146,20 @@ class Qwen2_5_VLMultiModalProcessor(vLLM_Qwen2_5_VLMultiModalProcessor):
         ]
 
 
-class NEW_MindWAY_Qwen2_5_VLForConditionalGeneration(MindWAY_Qwen2_5_VLForConditionalGeneration):
+class NEW_MindONE_Qwen2_5_VLForConditionalGeneration(
+        MindONE_Qwen2_5_VLForConditionalGeneration):
     # === Multi-Model Model === #
     # replace qwen2 model to vLLM (with PA)
     def __init__(self, config):
         Qwen2_5_VLPreTrainedModel.__init__(self, config)
 
-        self.visual = Qwen2_5_VisionTransformerPretrainedModel(config.vision_config)
+        self.visual = Qwen2_5_VisionTransformerPretrainedModel(
+            config.vision_config)
         self.model = vLLMQwen2Model(config)
         self.vocab_size = config.vocab_size
-        self.lm_head = mint.nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.lm_head = mint.nn.Linear(config.hidden_size,
+                                      config.vocab_size,
+                                      bias=False)
         self.rope_deltas = None  # cache rope_deltas here
 
         # Initialize weights and apply final processing
@@ -156,25 +170,32 @@ class NEW_MindWAY_Qwen2_5_VLForConditionalGeneration(MindWAY_Qwen2_5_VLForCondit
     Qwen2_5_VLMultiModalProcessor,
     info=Qwen2_5_VLProcessingInfo,
     dummy_inputs=Qwen2_5_VLDummyInputsBuilder)
-class Qwen2_5_VLForConditionalGeneration(MindWAYModelBase, SupportsMultiModal):
+class Qwen2_5_VLForConditionalGeneration(MindONEModelBase, SupportsMultiModal):
+
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__(vllm_config=vllm_config, prefix=prefix)
         config: Qwen2_5_VLConfig = vllm_config.model_config.hf_config
-        quant_config = vllm_config.quant_config
         multimodal_config = vllm_config.model_config.multimodal_config
 
         self.config = config
         self.multimodal_config = multimodal_config
 
-        mindway_model = NEW_MindWAY_Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            vllm_config.model_config.model,
-            mindspore_dtype=mindspore.bfloat16)
+        mindone_model = NEW_MindONE_Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            vllm_config.model_config.model, mindspore_dtype=mindspore.bfloat16)
 
-        self.visual = mindway_model.visual
-        self.language_model = Qwen2ForCausalLM(mindway_model, vllm_config, maybe_prefix(prefix, "language_model"))
+        self.visual = mindone_model.visual
+        self.language_model = Qwen2ForCausalLM(
+            mindone_model, vllm_config, maybe_prefix(prefix, "language_model"))
 
-        self.set_modules({"visual": self.visual, "language_model": self.language_model})
+        self.set_modules({
+            "visual": self.visual,
+            "language_model": self.language_model
+        })
         self.prefill = True
+        self.mstype = STR_DTYPE_TO_MS_DTYPE.get(self.model_config.dtype,
+                                                self.model_config.dtype)
+        self.casual_mask = LowerTriangularMask(
+            dtype=self.mstype, max_model_len=self.model_config.max_model_len)
 
     @cached_property
     def sampler(self):
@@ -236,6 +257,8 @@ class Qwen2_5_VLForConditionalGeneration(MindWAYModelBase, SupportsMultiModal):
                 image_embeds=image_embeds,
                 image_grid_thw=image_grid_thw)
 
+        return None
+
     def _parse_and_validate_video_input(
             self, **kwargs: object) -> Optional[Qwen2_5_VLVideoInputs]:
         pixel_values_videos = kwargs.pop("pixel_values_videos", None)
@@ -272,6 +295,8 @@ class Qwen2_5_VLForConditionalGeneration(MindWAYModelBase, SupportsMultiModal):
                 type="video_embeds",
                 video_embeds=video_embeds,
                 video_grid_thw=video_grid_thw)
+
+        return None
 
     _process_image_input = vLLM_Qwen2_5_VLForConditionalGeneration._process_image_input
     _process_video_input = vLLM_Qwen2_5_VLForConditionalGeneration._process_video_input
@@ -317,16 +342,16 @@ class Qwen2_5_VLForConditionalGeneration(MindWAYModelBase, SupportsMultiModal):
         return inputs_embeds
 
     def run_language_model(
-            self,
-            input_ids: Tensor,
-            positions: Tensor,
-            kv_caches: List[Tuple[Tensor, Tensor]],
-            attn_metadata: AttentionMetadata,
-            intermediate_tensors: IntermediateTensors = None,
-            inputs_embeds: Tensor = None,
+        self,
+        input_ids: Tensor,
+        positions: Tensor,
+        kv_caches: List[Tuple[Tensor, Tensor]],
+        attn_metadata: AttentionMetadata,
+        intermediate_tensors: IntermediateTensors = None,
+        inputs_embeds: Tensor = None,
     ):
         key_caches, value_caches = self.language_model.get_kvcache()
-        
+
         seq_lens = attn_metadata.seq_lens
         max_query_len = attn_metadata.max_query_len
         # When Mutli-Step is enabled with Chunked-Prefill, prefills and
@@ -340,7 +365,8 @@ class Qwen2_5_VLForConditionalGeneration(MindWAYModelBase, SupportsMultiModal):
         seq_lens_np = np.array(seq_lens, dtype=np.int32)
         query_lens_np = np.array(query_lens, dtype=np.int32)
         kv_cache_lens = seq_lens_np - query_lens_np
-        is_prefill = bool(attn_metadata.num_decode_tokens == 0 and kv_cache_lens.max() == 0)
+        is_prefill = bool(attn_metadata.num_decode_tokens == 0
+                          and kv_cache_lens.max() == 0)
 
         if is_prefill > 0:
             if input_ids is not None:
@@ -358,8 +384,12 @@ class Qwen2_5_VLForConditionalGeneration(MindWAYModelBase, SupportsMultiModal):
         input_ids = None
 
         slot_mapping = attn_metadata.slot_mapping
-        batch_valid_length = Tensor.from_numpy(np.array(attn_metadata.seq_lens, dtype=np.int32))
-        q_seq_lens = Tensor.from_numpy(np.array(attn_metadata.query_lens, dtype=np.int32))
+        attn_mask = self.casual_mask.gen_attention_mask(
+            is_prefill, positions, query_lens)
+        seq_lens_np = np.array(attn_metadata.seq_lens, dtype=np.int32)
+        batch_valid_length = Tensor.from_numpy(seq_lens_np)
+        q_seq_lens = Tensor.from_numpy(
+            np.array(attn_metadata.query_lens, dtype=np.int32))
         block_tables = attn_metadata.block_tables
 
         # keep position.ndim to 2, for work on mindspore dynamic shape
@@ -373,6 +403,7 @@ class Qwen2_5_VLForConditionalGeneration(MindWAYModelBase, SupportsMultiModal):
             value_caches,
             mutable(is_prefill),
             slot_mapping,
+            attn_mask,
             batch_valid_length,
             q_seq_lens,
             block_tables,
@@ -383,11 +414,15 @@ class Qwen2_5_VLForConditionalGeneration(MindWAYModelBase, SupportsMultiModal):
         if is_prefill:
             if not self.prefill:
                 self.prefill = True
-            enable_dynamic_shape(self.language_model.model, *model_inputs)  # enable dynamic shape once on first prefill step
+            enable_dynamic_shape(
+                self.language_model.model, *model_inputs
+            )  # enable dynamic shape once on first prefill step
         else:
             if self.prefill:
                 self.prefill = False
-                enable_dynamic_shape(self.language_model.model, *model_inputs)  # enable dynamic shape once on first decode step
+                enable_dynamic_shape(
+                    self.language_model.model, *model_inputs
+                )  # enable dynamic shape once on first decode step
 
         hidden_states = self.language_model.model(*model_inputs)
 
@@ -454,14 +489,10 @@ class Qwen2_5_VLForConditionalGeneration(MindWAYModelBase, SupportsMultiModal):
                     video_input=video_input)
                 input_ids = None
 
-        hidden_states = self.run_language_model(
-            input_ids,
-            positions,
-            kv_caches,
-            attn_metadata,
-            intermediate_tensors,
-            inputs_embeds
-        )
+        hidden_states = self.run_language_model(input_ids, positions,
+                                                kv_caches, attn_metadata,
+                                                intermediate_tensors,
+                                                inputs_embeds)
 
         return hidden_states
 
@@ -482,6 +513,5 @@ class Qwen2_5_VLForConditionalGeneration(MindWAYModelBase, SupportsMultiModal):
         _pynative_executor.sync()
         return next_token
 
-    def load_weights(self, weights: Iterable[Tuple[str,
-                                                   mindspore.Tensor]]) -> Set[str]:
+    def load_weights(self, weights: Iterable[Tuple[str, mindspore.Tensor]]):
         self.language_model.load_weights()

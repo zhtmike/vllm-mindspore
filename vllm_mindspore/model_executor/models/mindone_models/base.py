@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# encoding: utf-8
 # Copyright 2025 Huawei Technologies Co., Ltd
 # Copyright 2024 The vLLM team.
 #
@@ -20,7 +19,8 @@ from vllm.config import VllmConfig
 from vllm_mindspore.model_executor.models.model_base import MsModelBase
 
 
-class MindWAYModelBase(MsModelBase):
+class MindONEModelBase(MsModelBase):
+
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__(vllm_config=vllm_config, prefix=prefix)
 
@@ -28,7 +28,7 @@ class MindWAYModelBase(MsModelBase):
         self._check_modules_valid()
 
         for cell_name, module in self.modules_dict.items():
-            if isinstance(module, MindWAYModelBase):
+            if isinstance(module, MindONEModelBase):
                 for cell_name, sub_module in module.modules_dict.items():
                     for par_name, par in sub_module.parameters_and_names():
                         if cell_name != "self":
@@ -47,7 +47,7 @@ class MindWAYModelBase(MsModelBase):
 
         params_dict = dict()
         for name, module in self.modules_dict.items():
-            if isinstance(module, MindWAYModelBase):
+            if isinstance(module, MindONEModelBase):
                 params_dict.update(module.get_params_dict())
             else:
                 module_params = module.parameters_dict()
@@ -63,12 +63,12 @@ class MindWAYModelBase(MsModelBase):
     def named_modules(self, remove_duplicate: bool = True):
         self._check_modules_valid()
 
-        res_modules = set()
         for name, module in self.modules_dict.items():
 
-            if isinstance(module, MindWAYModelBase):
+            if isinstance(module, MindONEModelBase):
                 for name, sub_module in module.modules_dict.items():
-                    for module_name, sub_sub_module in sub_module.cells_and_names():
+                    for module_name, sub_sub_module in sub_module.cells_and_names(
+                    ):
                         if name != "self":
                             module_name = name + "." + module_name
                         yield module_name, sub_sub_module
@@ -82,7 +82,7 @@ class MindWAYModelBase(MsModelBase):
         self._check_modules_valid()
 
         for _, module in self.modules_dict.items():
-            if isinstance(module, MindWAYModelBase):
+            if isinstance(module, MindONEModelBase):
                 module.eval()
             else:
                 module.set_train(False)

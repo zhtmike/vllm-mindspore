@@ -39,6 +39,7 @@ from mindspore.common.api import _pynative_executor
 from mindformers.tools.register.config import MindFormerConfig
 from mindformers.core.context import build_mf_context
 from mindformers.core.parallel_config import build_parallel_config
+from mindformers.tools.utils import is_pynative
 
 from vllm_mindspore.model_executor.models.model_base import MsModelBase
 from vllm_mindspore.model_executor.models.attention_mask import LowerTriangularMask
@@ -198,11 +199,11 @@ class MfModelBase(MsModelBase):
 
         if is_prefill:
             self.network.phase = "prefill"
-            if not self.set_flags:
+            if not self.set_flags or is_pynative():
                 self.network.add_flags_custom(is_first_iteration=True)
             hidden_states = self.network(**model_inputs)
             self.network.phase = "increment"
-            if not self.set_flags:
+            if not self.set_flags or is_pynative():
                 self.network.add_flags_custom(is_first_iteration=False)
                 self.set_flags = True
         else:

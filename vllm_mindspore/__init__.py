@@ -52,6 +52,7 @@ from vllm_mindspore.utils import (
     get_dtype_size,
     ascend_device_count_stateless,
     ascend_is_initialized,
+    ms_memory_profiling,
 )
 
 vllm.utils.direct_register_custom_op = direct_register_custom_op
@@ -60,6 +61,7 @@ vllm.utils.async_tensor_h2d = async_tensor_h2d
 vllm.utils.get_dtype_size = get_dtype_size
 vllm.utils.cuda_device_count_stateless = ascend_device_count_stateless
 vllm.utils.cuda_is_initialized = ascend_is_initialized
+vllm.utils.memory_profiling = ms_memory_profiling
 vllm.config.cuda_device_count_stateless = ascend_device_count_stateless
 
 import vllm.executor

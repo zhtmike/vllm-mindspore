@@ -1544,13 +1544,11 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
                                                                hf_weight_map)
             elif any([name in param_name for name in [".l2q_proj.", ".feed_forward.w_gate_hidden.",
                                                       "shared_experts.w_gate_hidden"]]):
-                value, is_int4 = self.get_safetensor_from_file(param_name, src_hf_dir,
-                                                                hf_weight_map, is_split_param=True,
-                                                                split_axis=1)
+                value, is_int4 = self.get_safetensor_from_file_split_tp_group(
+                    param_name, src_hf_dir, hf_weight_map, split_axis=1)
             elif any([name in param_name for name in [".wo."]]):
-                value, is_int4 = self.get_safetensor_from_file(param_name, src_hf_dir,
-                                                                hf_weight_map, is_split_param=True,
-                                                                split_axis=0)
+                value, is_int4 = self.get_safetensor_from_file_split_tp_group(
+                    param_name, src_hf_dir, hf_weight_map, split_axis=0)
             elif any([name in param_name for name in [".feed_forward.w2.","shared_experts.w2"]]):
                 value = self.infer_smooth_quant_row_linear_split(param_name, src_hf_dir, hf_weight_map)
                 is_int4 = False

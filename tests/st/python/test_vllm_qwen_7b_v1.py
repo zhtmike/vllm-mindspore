@@ -46,7 +46,6 @@ class TestQwen:
     @pytest.mark.level0
     @pytest.mark.platform_arm_ascend910b_training
     @pytest.mark.env_single
-    @pytest.mark.skip(reason="qwen need to be supported on new MS package")
     def test_vllm_qwen(self):
         """
         test case qwen2.5 7B

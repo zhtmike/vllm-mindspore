@@ -47,7 +47,6 @@ class TestMfQwen_chunk_prefill_v1:
     @pytest.mark.level0
     @pytest.mark.platform_arm_ascend910b_training
     @pytest.mark.env_single
-    @pytest.mark.skip(reason="cp precision need to be fixed on v0.8.3 V0")
     def test_mf_qwen_7b_chunk_prefill(self):
         """
         test case qwen_7b_chunk_prefill

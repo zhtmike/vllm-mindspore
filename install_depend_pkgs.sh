@@ -54,7 +54,7 @@ cd ..
 echo "========= Installing mindspore"
 python_v="cp$(python3 --version 2>&1 | grep -oP 'Python \K\d+\.\d+' | tr -d .)"
 mindspore_path=$(get_yaml_value "$yaml_file" "mindspore")
-mindspore_name="mindspore-2.6.0-${python_v}-${python_v}-linux_$(arch).whl"
+mindspore_name="mindspore-2.7.0-${python_v}-${python_v}-linux_$(arch).whl"
 mindspore_pkg="${mindspore_path}unified/$(arch)/${mindspore_name}"
 
 wget "$mindspore_pkg" --no-check-certificate || { echo "Failed to download mindspore"; exit 1; }
@@ -95,7 +95,7 @@ else
     echo "The $msadapter_dir folder already exists and will not be re-downloaded."
 fi
 cd "$msadapter_dir" || { echo "Failed to git clone msadapter!"; exit 1; }
-pip uninstall msadapter -y && python3 setup.py install || { echo "Failed to install msadapter"; exit 1; }
+pip uninstall msadapter -y && pip install .  || { echo "Failed to install msadapter"; exit 1; }
 cd ..
 
 echo "========= All dependencies installed successfully!"

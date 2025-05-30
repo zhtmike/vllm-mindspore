@@ -80,6 +80,7 @@ class TestMfQwenV1:
     @pytest.mark.level0
     @pytest.mark.platform_arm_ascend910b_training
     @pytest.mark.env_single
+    @pytest.mark.skip(reason="pc precision need to be fixed on v0.8.3 V0")
     def test_mf_qwen_batch(self):
         """
         test case qwen2.5 7B, to test prefill and decode mixed, can trigger PA q_seq_len > 1

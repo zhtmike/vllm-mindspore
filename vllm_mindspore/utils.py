@@ -268,11 +268,7 @@ def convert_np_to_ms_dtype(value):
 
 # Replace the directly loaded module in vllm, such as 'from module import xxx'
 def update_modules(name, module):
-<<<<<<< HEAD
-    logger.info(f"replace module {0} by {1}".format(name, module))
-=======
-    logger.debug(f"replace module {name} by {module}")
->>>>>>> update log config
+    logger.debug(f"replace module {0} by {1}".format(name, module))
     sys.modules.update({name: module})
 
 

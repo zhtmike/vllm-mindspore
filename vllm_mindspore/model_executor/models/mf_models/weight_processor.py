@@ -21,8 +21,8 @@ import os
 from enum import Enum
 from safetensors import safe_open
 from mindspore.communication.management import get_rank, get_group_size
-from mindformers.experimental.infer.core.utils import get_tp_world_size, get_moe_tp_world_size, get_moe_ep_world_size
-from mindformers.experimental.parallel_core.pynative.parallel_state import get_data_parallel_world_size
+from mindformers.parallel_core.inference.utils import get_tp_world_size
+from mindformers.parallel_core.inference.parallel_state import get_data_parallel_world_size
 
 
 class EPMethod(Enum):

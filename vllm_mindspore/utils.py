@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# encoding: utf-8
 # Copyright 2025 Huawei Technologies Co., Ltd
 # Copyright 2024 The vLLM team.
 #
@@ -21,17 +20,10 @@ import gc
 import logging
 import os
 import sys
-from typing import (
-    TYPE_CHECKING,
-    Callable,
-    Generator,
-    List,
-    Optional,
-    Tuple,
-    Union,
-)
-import numpy as np
+from typing import (TYPE_CHECKING, Callable, Generator, List, Optional, Tuple,
+                    Union)
 
+import numpy as np
 import torch
 
 if TYPE_CHECKING:
@@ -39,19 +31,17 @@ if TYPE_CHECKING:
 else:
     Library = None
 
-from vllm.utils import T, TORCH_DTYPE_TO_NUMPY_DTYPE, make_ndarray_with_pad, MemorySnapshot, MemoryProfilingResult
-
 import mindspore as ms
-from mindspore.common.initializer import Zero
 from mindspore import dtype as mstype
-from mindspore.common.api import _pynative_executor
+from mindspore.common.initializer import Zero
+from vllm.utils import (TORCH_DTYPE_TO_NUMPY_DTYPE, MemoryProfilingResult,
+                        MemorySnapshot, T, make_ndarray_with_pad)
 
 from .scripts import env_setup
 
 MsKVCache = Tuple[ms.Tensor, ms.Tensor]
 
 logger = logging.getLogger(__name__)
-
 
 STR_DTYPE_TO_MS_DTYPE = {
     "half": ms.float16,
@@ -77,13 +67,14 @@ def direct_register_custom_op(
     fake_impl: Optional[Callable] = None,
     target_lib: Optional[Library] = None,
     dispatch_key: str = "CUDA",
-): ...
+):
+    ...
 
 
 def _create_empty_tensor(ms_type):
     init_func = Zero()
     init_func.__enable_zero_dim__ = True
-    init_tensor = ms.Tensor(shape=(0,), dtype=ms_type, init=init_func)
+    init_tensor = ms.Tensor(shape=(0, ), dtype=ms_type, init=init_func)
     init_tensor.init_data()
 
     return init_tensor
@@ -133,7 +124,10 @@ def async_tensor_h2d(
     if not data:
         t = _create_empty_tensor(dtype)
     else:
-        t = torch.tensor(data, dtype=dtype, pin_memory=pin_memory, device="CPU")
+        t = torch.tensor(data,
+                         dtype=dtype,
+                         pin_memory=pin_memory,
+                         device="CPU")
     return t
 
 
@@ -165,17 +159,17 @@ def get_dtype_size(dtype: torch.dtype) -> int:
     return torch.tensor([1], dtype=dtype).itemsize
 
 
-def ascend_device_count_stateless() -> List[str]:
+def ascend_device_count_stateless() -> int:
     visible_device_str = os.environ.get("ASCEND_RT_VISIBLE_DEVICES", None)
     if visible_device_str:
         try:
             res = visible_device_str.split(",")
         except Exception as e:
-            logger.error('Cannot parse "ASCEND_RT_VISIBLE_DEVICES" for: %s!' % str(e))
+            logger.error('Cannot parse "ASCEND_RT_VISIBLE_DEVICES" for: %s!',
+                         str(e))
             raise ValueError(
-                'Error argument(%s) of environ "ASCEND_RT_VISIBLE_DEVICES"!'
-                % visible_device_str
-            )
+                f'Error argument({visible_device_str}) of environ "ASCEND_RT_VISIBLE_DEVICES"!'
+            ) from e
 
         return len(res)
 
@@ -191,12 +185,13 @@ def ascend_device_count_stateless() -> List[str]:
     avl_devices = []
     for i, stat in enumerate(res):
         if stat != "OK":
-            logger.warning("Device %d is not ok, status is %s!" % (i, stat))
+            logger.warning("Device %d is not ok, status is %s!", i, stat)
         else:
             avl_devices.append(str(i))
     visible_device_str = ",".join(avl_devices)
     os.environ["ASCEND_RT_VISIBLE_DEVICES"] = visible_device_str
-    logger.info('Set environ "ASCEND_RT_VISIBLE_DEVICES" as %s' % visible_device_str)
+    logger.info('Set environ "ASCEND_RT_VISIBLE_DEVICES" as %s',
+                visible_device_str)
 
     return len(avl_devices)
 
@@ -207,17 +202,16 @@ def ascend_is_initialized():
 
 
 def is_mindformers_model_backend():
-    return (
-        os.getenv("vLLM_MODEL_BACKEND")
-        and os.environ["vLLM_MODEL_BACKEND"] == "MindFormers"
-    )
+    return (os.getenv("vLLM_MODEL_BACKEND")  # noqa: SIM112
+            and
+            os.environ["vLLM_MODEL_BACKEND"] == "MindFormers"  # noqa: SIM112
+            )
 
 
-def is_mindway_model_backend():
-    return (
-        os.getenv("vLLM_MODEL_BACKEND")
-        and os.environ["vLLM_MODEL_BACKEND"] == "MindWAY"
-    )
+def is_mindone_model_backend():
+    return (os.getenv("vLLM_MODEL_BACKEND")  # noqa: SIM112
+            and os.environ["vLLM_MODEL_BACKEND"] == "MindONE"  # noqa: SIM112
+            )
 
 
 def check_ready():
@@ -225,30 +219,34 @@ def check_ready():
     from mindspore import set_context
 
     if envs.VLLM_USE_V1:
-        raise NotImplementedError("vLLM-MindSpore does not support VLLM V1 now!")
+        raise NotImplementedError(
+            "vLLM-MindSpore does not support VLLM V1 now!")
 
     # Common environment variables of predict.
     set_context(jit_config={"jit_level": "O0", "infer_boost": "on"})
     default_env = {
-        "MS_INTERNAL_DISABLE_CUSTOM_KERNEL_LIST": "FlashAttentionScore,PagedAttention",
+        "MS_INTERNAL_DISABLE_CUSTOM_KERNEL_LIST":
+        "FlashAttentionScore,PagedAttention",
     }
     env_setup(default_env)
 
     if os.getenv("MS_MEMPOOL_BLOCK_SIZE"):
-        set_context(mempool_block_size=f"{os.environ['MS_MEMPOOL_BLOCK_SIZE']}GB")
+        set_context(
+            mempool_block_size=f"{os.environ['MS_MEMPOOL_BLOCK_SIZE']}GB")
 
     if is_mindformers_model_backend():
         logger.info("Run with Mindformers backend!")
         necessary_envs = ("MINDFORMERS_MODEL_CONFIG", )
-        lost_envs = [env_item for env_item in necessary_envs if not os.getenv(env_item)]
+        lost_envs = [
+            env_item for env_item in necessary_envs if not os.getenv(env_item)
+        ]
 
         if lost_envs:
             raise RuntimeError(
-                'For "MindFormers" model backend, environments %s should be set!'
-                % str(lost_envs)
+                f'For "MindFormers" model backend, environments {str(lost_envs)} should be set!'
             )
-    elif is_mindway_model_backend():
-        logger.info("Run with MindWAY backend!")
+    elif is_mindone_model_backend():
+        logger.info("Run with MindONE backend!")
     else:
         logger.info("Run with native model backend!")
 
@@ -269,9 +267,10 @@ def convert_np_to_ms_dtype(value):
         value_dtype = ms.bfloat16
     return value_dtype
 
+
 # Replace the directly loaded module in vllm, such as 'from module import xxx'
 def update_modules(name, module):
-    logger.info(f"replace module {name} by {module}")
+    logger.info(f"replace module {0} by {1}".format(name, module))
     sys.modules.update({name: module})
 
 
@@ -339,7 +338,7 @@ def ms_memory_profiling(
 
     yield result
 
-    # measure memory before empty cache to get maxium reserved memory
+    # measure memory before empty cache to get maximum reserved memory
     result.after_profile.measure()
 
     gc.collect()
@@ -348,7 +347,7 @@ def ms_memory_profiling(
     diff_profile = result.after_profile - result.before_profile
     diff_from_create = result.after_profile - result.before_create
 
-    # use reserved memory instead of allocated memory to descirbe increase of torch memory
+    # use reserved memory instead of allocated memory to describe increase of torch memory
     result.torch_peak_increase = diff_profile.torch_memory
     result.non_torch_increase = diff_from_create.non_torch_memory
     result.profile_time = diff_profile.timestamp

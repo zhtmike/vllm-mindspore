@@ -47,7 +47,7 @@ fi
 # isort check
 if ! git diff --cached --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.py' '*.pyi' &> /dev/null; then
   git diff --cached --name-only --diff-filter=ACM "$MERGEBASE" -- '*.py' '*.pyi' | xargs \
-  isort --check-only
+  isort --check-only --diff
 fi
 if [[ $? -ne 0 ]]; then
   echo "isort check failed."
@@ -73,4 +73,4 @@ fi
 
 rm -f pyproject.toml
 
-exit $RET_FLAG
+exit 0

@@ -20,13 +20,13 @@ import os
 from abc import abstractmethod
 from typing import Iterable, List, Optional, Set, Tuple, Union, Dict
 
-from vllm.attention import AttentionMetadata
 from vllm.config import VllmConfig, get_current_vllm_config
 from vllm.model_executor.layers.sampler import SamplerOutput
 from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.sequence import IntermediateTensors
 from vllm.attention.backends.abstract import AttentionType
 from vllm.forward_context import get_forward_context
+from vllm.attention.layer import Attention
 
 import torch
 
@@ -63,6 +63,42 @@ class Fake_MLA(Fake_Attention):
         ]
 
 
+class Fake_Attention_V1(Attention):
+    def __init__(self):
+        vllm_config = get_current_vllm_config()
+        block_size = vllm_config.cache_config.block_size
+        num_kv_heads = vllm_config.model_config.get_num_kv_heads(
+            vllm_config.parallel_config
+        )
+        head_size = vllm_config.model_config.get_head_size()
+        num_block = 0
+        self.kv_shape = [num_block, block_size, num_kv_heads, head_size]
+        self.kv_cache = [
+            (
+                torch.zeros(self.kv_shape, dtype=torch.bfloat16, device="Ascend"),
+                torch.zeros(self.kv_shape, dtype=torch.bfloat16, device="Ascend"),
+            )
+            for _ in range(vllm_config.parallel_config.pipeline_parallel_size)
+        ]
+        self.attn_type = AttentionType.DECODER
+        self.num_block = num_block
+        self.num_kv_heads = num_kv_heads
+        self.head_size = head_size
+        self.dtype = vllm_config.model_config.dtype
+        self.block_size = block_size
+        self.sliding_window = None
+
+
+class Fake_MLA_V1(Fake_Attention_V1):
+    def __init__(self):
+        super().__init__()
+        vllm_config = get_current_vllm_config()
+        self.kv_cache = [
+            (torch.zeros(self.kv_shape, dtype=torch.bfloat16, device="Ascend"),)
+            for _ in range(vllm_config.parallel_config.pipeline_parallel_size)
+        ]
+
+
 class MsModelBase():
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
         super(MsModelBase, self).__init__()
@@ -75,6 +111,7 @@ class MsModelBase():
         self.cache_config = vllm_config.cache_config
         self.parallel_config = vllm_config.parallel_config
         self.load_config = vllm_config.load_config
+        self.scheduler_config = vllm_config.scheduler_config
 
         self.modules_dict = None
 
@@ -156,8 +193,6 @@ class MsModelBase():
         self,
         input_ids: Tensor,
         positions: Tensor,
-        kv_caches: List[Tensor],
-        attn_metadata: AttentionMetadata,
         intermediate_tensors: Optional[IntermediateTensors] = None,
         inputs_embeds: Optional[Tensor] = None,
         previous_hidden_states: Optional[Tensor] = None,
@@ -166,8 +201,6 @@ class MsModelBase():
         return self.forward(
             input_ids,
             positions,
-            kv_caches,
-            attn_metadata,
             intermediate_tensors,
             inputs_embeds,
             previous_hidden_states=previous_hidden_states,
@@ -178,13 +211,53 @@ class MsModelBase():
         self,
         input_ids: Tensor,
         positions: Tensor,
-        kv_caches: List[Tensor],
-        attn_metadata: AttentionMetadata,
         intermediate_tensors: Optional[IntermediateTensors] = None,
         inputs_embeds: Optional[Tensor] = None,
         **kwargs
     ) -> Union[Tensor, IntermediateTensors]:
         raise NotImplementedError
+
+    def set_model_inputs(self, is_prefill):
+        dyn_input_ids = Tensor(shape=[None, None], dtype=mstype.int64)
+        dyn_position_ids = Tensor(shape=[None], dtype=mstype.int64)
+
+        block_size = self.cache_config.block_size
+        num_kv_heads = self.model_config.get_num_kv_heads(self.parallel_config)
+        head_size = self.model_config.get_head_size()
+        kv_cache_shape = (None, block_size, num_kv_heads, head_size)
+
+        kv_cache_dtype = self.model_config.dtype if self.cache_config.cache_dtype == "auto" \
+            else self.cache_config.cache_dtype
+        if kv_cache_dtype in STR_DTYPE_TO_MS_DTYPE:
+            kv_cache_dtype = STR_DTYPE_TO_MS_DTYPE[kv_cache_dtype]
+
+        num_layers = self.model_config.get_num_layers(self.parallel_config)
+
+        dyn_key_cache = mutable(Tensor(shape=kv_cache_shape, dtype=kv_cache_dtype))
+        dyn_value_cache = mutable(Tensor(shape=kv_cache_shape, dtype=kv_cache_dtype))
+        dyn_key_caches = mutable([dyn_key_cache for _ in range(num_layers)])
+        dyn_value_caches = mutable([dyn_value_cache for _ in range(num_layers)])
+
+        dyn_batch_valid_length = Tensor(shape=[None, ], dtype=mstype.int32)
+        dyn_q_seq_lens = Tensor(shape=[None, ], dtype=mstype.int32)
+        dyn_slot_mapping = Tensor(shape=[None, ], dtype=mstype.int32)
+        dyn_block_tables = Tensor(shape=[None, None], dtype=mstype.int32)
+        dyn_intermediate_tensors = None
+        dyn_inputs_embeds = None
+
+        self.model.set_inputs(
+            dyn_input_ids,
+            dyn_position_ids,
+            dyn_key_caches,
+            dyn_value_caches,
+            is_prefill,
+            dyn_slot_mapping,
+            dyn_batch_valid_length,
+            dyn_q_seq_lens,
+            dyn_block_tables,
+            dyn_intermediate_tensors,
+            dyn_inputs_embeds
+        )
 
     def get_kvcache(self):
         key_cache = []

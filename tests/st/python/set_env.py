@@ -29,7 +29,6 @@ if current_pythonpath:
 else:
     os.environ["PYTHONPATH"] = mindformers_path
 
-
 class EnvVarManager:
     def __init__(self):
         self._original_env: Dict[str, Optional[str]] = {}

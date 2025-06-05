@@ -36,16 +36,18 @@ except Exception as e:
 }
 
 echo "========= Installing vllm"
-vllm_dir=vllm-v0.7.3
+vllm_dir=vllm-v0.8.3
 if [ ! -d "$vllm_dir" ]; then
-    git clone https://github.com/vllm-project/vllm.git -b v0.7.3 "$vllm_dir"
+    git clone https://github.com/vllm-project/vllm.git -b v0.8.3 "$vllm_dir"
+    cd "$vllm_dir" ||  { echo "Failed to git clone vllm!"; exit 1; }
+    git apply ../../vllm_dp/dp_scale_out.patch
 else
     echo "The $vllm_dir folder already exists and will not be re-downloaded."
+    cd "$vllm_dir" || { echo "Failed to git clone vllm!"; exit 1; }
 fi
-cd "$vllm_dir" || { echo "Failed to git clone vllm!"; exit 1; }
 pip uninstall msadapter -y
 pip uninstall vllm -y
-pip install -v -r requirements-cpu.txt --extra-index-url https://download.pytorch.org/whl/cpu
+pip install -v -r requirements/cpu.txt --extra-index-url https://download.pytorch.org/whl/cpu
 VLLM_TARGET_DEVICE=empty python setup.py install || { echo "Failed to install vllm"; exit 1; }
 pip uninstall torch torch-npu torchvision -y
 cd ..

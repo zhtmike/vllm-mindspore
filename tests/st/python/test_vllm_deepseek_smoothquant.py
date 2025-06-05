@@ -31,7 +31,9 @@ env_vars = {
     "LCCL_DETERMINISTIC": "1",
     "HCCL_DETERMINISTIC": "true",
     "ATB_MATMUL_SHUFFLE_K_ENABLE": "0",
-    "ATB_LLM_LCOC_ENABLE": "0"
+    "ATB_LLM_LCOC_ENABLE": "0",
+    "VLLM_USE_V1": "0",
+    "MS_DEV_SIDE_EFFECT_LOAD_ELIM": "3"
 }
 # set env
 env_manager.setup_ai_environment(env_vars)
@@ -61,7 +63,7 @@ class TestDeepSeek:
 
         # Create an LLM.
         llm = LLM(model="/home/workspace/mindspore_dataset/weight/DeepSeek-R1-W8A8-smoothquant-newconfig",
-                  trust_remote_code=True, gpu_memory_utilization=0.9, tensor_parallel_size=8)
+                  trust_remote_code=True, gpu_memory_utilization=0.9, tensor_parallel_size=8, max_model_len=4096)
         # Generate texts from the prompts. The output is a list of RequestOutput objects
         # that contain the prompt, generated text, and other information.
         outputs = llm.generate(prompts, sampling_params)

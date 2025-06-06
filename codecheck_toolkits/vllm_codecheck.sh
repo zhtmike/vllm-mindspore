@@ -35,7 +35,7 @@ fi
 if ! git diff --cached --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.py' '*.pyi' &> /dev/null; then
   echo "ruff check is running..."
   git diff --cached --name-only --diff-filter=ACM "$MERGEBASE" -- '*.py' '*.pyi' |  xargs \
-  ruff check
+  ruff check --force-exclude
 fi
 if [[ $? -ne 0 ]]; then
   echo "ruff check failed."

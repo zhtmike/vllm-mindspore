@@ -1,13 +1,12 @@
+#!/usr/bin/env python3
+# encoding: utf-8
 # Copyright 2025 Huawei Technologies Co., Ltd
-#
-# This file is mainly Adapted from https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/data_parallel.py
-# Copyright 2025 The vLLM team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -38,6 +37,8 @@ env_vars = {
     "HCCL_DETERMINISTIC": "true",
     "ATB_MATMUL_SHUFFLE_K_ENABLE": "0",
     "ATB_LLM_LCOC_ENABLE": "0",
+    "HCCL_IF_BASE_PORT": "60000",
+    "LCAL_COMM_ID": "127.0.0.1:10068"
 }
 env_manager.setup_ai_environment(env_vars)
 import vllm_mindspore

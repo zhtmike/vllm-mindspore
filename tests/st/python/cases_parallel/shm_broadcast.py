@@ -76,7 +76,6 @@ def worker_fn_wrapper(fn):
 
 @worker_fn_wrapper
 def worker_fn():
-
     rank = dist.get_rank()
     if rank == 0:
         port = get_open_port()
@@ -87,7 +86,7 @@ def worker_fn():
         dist.broadcast_object_list(recv, src=0)
         ip, port = recv
 
-    stateless_pg = dist.new_group([0,1,2,3], backend="gloo")
+    stateless_pg = dist.new_group([0, 1, 2, 3], backend="gloo")
 
     for pg in [dist.group.WORLD, stateless_pg]:
 
@@ -132,8 +131,5 @@ def worker_fn():
             print("StatelessProcessGroup passed the test!")
 
 
-@pytest.mark.level0
-@pytest.mark.platform_arm_ascend910b_training
-@pytest.mark.env_single
 def test_shm_broadcast():
     distributed_run(worker_fn, 4)

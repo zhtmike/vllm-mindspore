@@ -33,7 +33,6 @@ env_vars = {
     "ATB_MATMUL_SHUFFLE_K_ENABLE": "0",
     "ATB_LLM_LCOC_ENABLE": "0",
     "VLLM_USE_V1": "0",
-    "MS_DEV_SIDE_EFFECT_LOAD_ELIM": "3"
 }
 # set env
 env_manager.setup_ai_environment(env_vars)

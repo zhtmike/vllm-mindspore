@@ -30,7 +30,7 @@ env_vars = {
     "MINDFORMERS_MODEL_CONFIG": "./config/predict_deepseek_r1_671b_w8a8.yaml",
     "ASCEND_CUSTOM_PATH": os.path.expandvars("$ASCEND_HOME_PATH/../"),
     "vLLM_MODEL_BACKEND": "MindFormers",
-    "MS_ENABLE_LCCL": "on",
+    "MS_ENABLE_LCCL": "off",
     "HCCL_OP_EXPANSION_MODE": "AIV",
     "ASCEND_RT_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
     "MS_ALLOC_CONF": "enable_vmm:True",
@@ -38,7 +38,6 @@ env_vars = {
     "HCCL_DETERMINISTIC": "true",
     "ATB_MATMUL_SHUFFLE_K_ENABLE": "0",
     "ATB_LLM_LCOC_ENABLE": "0",
-    "MS_DEV_SIDE_EFFECT_LOAD_ELIM": "3"
 }
 env_manager.setup_ai_environment(env_vars)
 import vllm_mindspore
@@ -195,6 +194,7 @@ def test_deepseek_r1_dp4_tp2_ep4():
     """
     test case deepseek r1 w8a8 dp4 tp2 ep4
     """
+
     new_yaml = "dp4_tp2_ep4.yaml"
     replaced_pattern = ['data_parallel: 4', 'model_parallel: 2', 'expert_parallel: 4']
     dp_size = 4
@@ -209,13 +209,12 @@ def test_deepseek_r1_dp4_tp2_ep4():
     exec_ds_with_dp(new_yaml, replaced_pattern, dp_size, tp_size, prompts, except_list)
 
 
-@pytest.mark.level1
-@pytest.mark.platform_arm_ascend910b_training
-@pytest.mark.allcards
+@pytest.mark.skip(reason="Currently does not support relevant communication fusion operators in 910b")
 def test_deepseek_r1_dp8_tp1_ep8():
     """
     test case deepseek r1 w8a8 Dp8 tp1 ep8
     """
+
     new_yaml = "dp8_tp1_ep8.yaml"
     replaced_pattern = ['data_parallel: 8', 'model_parallel: 1', 'expert_parallel: 8']
     dp_size = 8
@@ -237,6 +236,7 @@ def test_deepseek_r1_dp2_tp4_ep1():
     """
     test case deepseek r1 w8a8 dp2 tp4 ep1
     """
+
     new_yaml = "dp2_tp4_ep1.yaml"
     replaced_pattern = ['data_parallel: 2', 'model_parallel: 4', 'expert_parallel: 1']
     dp_size = 2
@@ -251,13 +251,12 @@ def test_deepseek_r1_dp2_tp4_ep1():
     exec_ds_with_dp(new_yaml, replaced_pattern, dp_size, tp_size, prompts, except_list)
 
 
-@pytest.mark.level1
-@pytest.mark.platform_arm_ascend910b_training
-@pytest.mark.allcards
+@pytest.mark.skip(reason="Currently does not support relevant communication fusion operators in 910b")
 def test_deepseek_r1_dp4_tp2_ep8():
     """
     test case deepseek r1 w8a8 dp4 tp2 ep8
     """
+
     new_yaml = "dp4_tp2_ep8.yaml"
     replaced_pattern = ['data_parallel: 4', 'model_parallel: 2', 'expert_parallel: 8']
     dp_size = 4
@@ -279,6 +278,7 @@ def test_deepseek_r1_dp8_tp1_ep1():
     """
     test case deepseek r1 w8a8 dp8 tp1 ep1
     """
+
     new_yaml = "dp8_tp1_ep1.yaml"
     replaced_pattern = ['data_parallel: 8', 'model_parallel: 1', 'expert_parallel: 1']
     dp_size = 8
@@ -300,6 +300,7 @@ def test_deepseek_r1_dp8_tp1_ep4():
     """
     test case deepseek r1 w8a8 dp8 tp1 ep1
     """
+
     new_yaml = "dp8_tp1_ep4.yaml"
     replaced_pattern = ['data_parallel: 8', 'model_parallel: 1', 'expert_parallel: 4']
     dp_size = 8
@@ -321,6 +322,7 @@ def test_deepseek_r1_tp8_ep8():
     """
     test case deepseek r1 w8a8 tp8 ep8
     """
+
     new_yaml = "tp8_ep8.yaml"
     replaced_pattern = ['data_parallel: 1', 'model_parallel: 8', 'expert_parallel: 8']
     # Sample prompts.
@@ -340,6 +342,7 @@ def test_deepseek_r1_tp8_ep4():
     """
     test case deepseek r1 w8a8 tp8 ep4
     """
+
     new_yaml = "tp8_ep4.yaml"
     replaced_pattern = ['data_parallel: 1', 'model_parallel: 8', 'expert_parallel: 4']
     # Sample prompts.

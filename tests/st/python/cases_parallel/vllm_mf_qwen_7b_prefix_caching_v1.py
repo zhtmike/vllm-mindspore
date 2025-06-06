@@ -14,63 +14,62 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""test mf deepseek r1 smoothquant."""
+
+"""test mf qwen prefix caching."""
 import pytest
 import os
-from . import set_env
+from tests.st.python import set_env
 
 env_manager = set_env.EnvVarManager()
-# def env
 env_vars = {
-    "MINDFORMERS_MODEL_CONFIG": "./config/predict_deepseek_r1_671b_w8a8_smoothquant.yaml",
+    "MINDFORMERS_MODEL_CONFIG": "./config/predict_qwen2_5_7b_instruct.yaml",
     "ASCEND_CUSTOM_PATH": os.path.expandvars("$ASCEND_HOME_PATH/../"),
     "vLLM_MODEL_BACKEND": "MindFormers",
     "MS_ENABLE_LCCL": "off",
     "HCCL_OP_EXPANSION_MODE": "AIV",
-    "ASCEND_RT_VISIBLE_DEVICES": "0,1,2,3,4,5,6,7",
-    "MS_ALLOC_CONF": "enable_vmm:True",
     "LCCL_DETERMINISTIC": "1",
     "HCCL_DETERMINISTIC": "true",
     "ATB_MATMUL_SHUFFLE_K_ENABLE": "0",
     "ATB_LLM_LCOC_ENABLE": "0",
-    "VLLM_USE_V1": "0",
-    "HCCL_IF_BASE_PORT": "60000",
-    "LCAL_COMM_ID": "127.0.0.1:10068"
+    "HCCL_IF_BASE_PORT": "60000"
 }
-# set env
 env_manager.setup_ai_environment(env_vars)
 import vllm_mindspore
 from vllm import LLM, SamplingParams
 
 
-@pytest.mark.level0
-@pytest.mark.platform_arm_ascend910b_training
-@pytest.mark.env_single
-def test_deepseek_r1_mss():
+def test_mf_qwen_7b_prefix_caching():
     """
-    test case deepseek r1 w8a8 mss
+    test case qwen_7b_prefix_caching
     """
 
-    # Sample prompts.
+    # First prompts.
     prompts = [
-        "介绍下北京故宫",
+        "I love Beijing, because it is a city that has so much to offer. I have visited"
     ]
-
+    # second prompts, the second prompt is a continuation of the first prompts, make sure prefix caching work.
+    second_prompts = [
+        "I love Beijing, because it is a city that has so much to offer. I have visited many places"
+    ]
     # Create a sampling params object.
     sampling_params = SamplingParams(temperature=0.0, max_tokens=10, top_k=1)
 
     # Create an LLM.
-    llm = LLM(model="/home/workspace/mindspore_dataset/weight/DeepSeek-R1-W8A8-smoothquant-newconfig",
-              trust_remote_code=True, gpu_memory_utilization=0.9, tensor_parallel_size=8, num_scheduler_steps=8)
+    llm = LLM(model="/home/workspace/mindspore_dataset/weight/Qwen2.5-7B-Instruct",
+              max_model_len=8192, block_size=16, tensor_parallel_size=2)
     # Generate texts from the prompts. The output is a list of RequestOutput objects
     # that contain the prompt, generated text, and other information.
     outputs = llm.generate(prompts, sampling_params)
-    # Print the outputs.
-    for i, output in enumerate(outputs):
-        prompt = output.prompt
-        generated_text = output.outputs[0].text
-        print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
-        assert "博物院" in generated_text
+    second_outputs = llm.generate(second_prompts, sampling_params)
+    except_list = [' many times and each time I have found something new']
+    second_except_list = [' in Beijing, but I have to say that the']
+    for i, (output, second_output) in enumerate(zip(outputs, second_outputs)):
+        generated_text = output.outputs[i].text
+        print(f"Output1 - Prompt: {prompts[i]!r}, Generated text: {generated_text!r}")
+        assert generated_text == except_list[i]
 
-    # unset env
+        second_generated_text = second_output.outputs[i].text
+        print(f"Output2 - Prompt: {second_prompts[i]!r}, Generated text: {second_generated_text!r}")
+        assert second_generated_text == second_except_list[i]
+
     env_manager.unset_all()

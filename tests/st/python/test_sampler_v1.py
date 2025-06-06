@@ -241,7 +241,7 @@ def _create_weighted_output_token_list(
 
 @pytest.mark.level0
 @pytest.mark.platform_arm_ascend910b_training
-@pytest.mark.env_single
+@pytest.mark.env_onecard
 @pytest.mark.parametrize("device", CUDA_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2])
 def test_sampler_min_tokens_penalty(device: str, batch_size: int):
@@ -272,7 +272,7 @@ def test_sampler_min_tokens_penalty(device: str, batch_size: int):
 
 @pytest.mark.level0
 @pytest.mark.platform_arm_ascend910b_training
-@pytest.mark.env_single
+@pytest.mark.env_onecard
 @pytest.mark.parametrize("device", CUDA_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2])
 @pytest.mark.parametrize("presence_penalty", [-2.0, 2.0])
@@ -318,7 +318,7 @@ def test_sampler_presence_penalty(device: str, batch_size: int,
 
 @pytest.mark.level0
 @pytest.mark.platform_arm_ascend910b_training
-@pytest.mark.env_single
+@pytest.mark.env_onecard
 @pytest.mark.parametrize("device", CUDA_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2])
 @pytest.mark.parametrize("frequency_penalty", [-2.0, 2.0])
@@ -372,7 +372,7 @@ def test_sampler_frequency_penalty(device: str, batch_size: int,
 
 @pytest.mark.level0
 @pytest.mark.platform_arm_ascend910b_training
-@pytest.mark.env_single
+@pytest.mark.env_onecard
 @pytest.mark.parametrize("device", CUDA_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2])
 @pytest.mark.parametrize("repetition_penalty", [0.1, 1.9])
@@ -419,7 +419,7 @@ def test_sampler_repetition_penalty(device: str, batch_size: int,
 
 @pytest.mark.level0
 @pytest.mark.platform_arm_ascend910b_training
-@pytest.mark.env_single
+@pytest.mark.env_onecard
 @pytest.mark.parametrize("device", CUDA_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2])
 @pytest.mark.parametrize("min_p", [0.0, 0.1])
@@ -460,7 +460,7 @@ def test_sampler_min_p(device: str, batch_size: int, min_p: float):
 
 @pytest.mark.level0
 @pytest.mark.platform_arm_ascend910b_training
-@pytest.mark.env_single
+@pytest.mark.env_onecard
 @pytest.mark.parametrize("device", CUDA_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2])
 @pytest.mark.parametrize("bias_value", [-0.1, 1.2])
@@ -495,7 +495,7 @@ def test_sampler_logit_bias(device: str, batch_size: int, bias_value: float):
 
 @pytest.mark.level0
 @pytest.mark.platform_arm_ascend910b_training
-@pytest.mark.env_single
+@pytest.mark.env_onecard
 @pytest.mark.parametrize("device", CUDA_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2])
 @pytest.mark.parametrize("num_allowed_token_ids", [0, 1, 2])
@@ -537,7 +537,7 @@ def test_sampler_allowed_token_ids(device: str, batch_size: int,
 
 @pytest.mark.level0
 @pytest.mark.platform_arm_ascend910b_training
-@pytest.mark.env_single
+@pytest.mark.env_onecard
 @pytest.mark.parametrize("device", CUDA_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2])
 @pytest.mark.parametrize("bad_words_lengths", [(1, ), (1, 3), (2, 2)])

@@ -144,6 +144,7 @@ class DeepseekV3ForCausalLM(MfModelBase):
         self.mf_config.load_checkpoint = self.get_model_path()
 
         self.mf_model_config = DeepseekV3Config_MF(**self.mf_config.model.model_config)
+        self.mf_model_config.enable_micro_batch = self.enable_micro_batch
         if self.mf_config.moe_config:
             self.mf_model_config.moe_config = self.mf_config.moe_config
             # dispatch/combine in moe need max_num_seqs as global_max_bs

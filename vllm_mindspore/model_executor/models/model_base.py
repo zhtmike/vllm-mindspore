@@ -112,6 +112,9 @@ class MsModelBase():
         self.parallel_config = vllm_config.parallel_config
         self.load_config = vllm_config.load_config
         self.scheduler_config = vllm_config.scheduler_config
+        self.enable_micro_batch = \
+                vllm_config.additional_config.get('enable_micro_batch', 0) == 1 \
+                if vllm_config.additional_config is not None else False
 
         self.modules_dict = None
 

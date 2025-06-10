@@ -43,7 +43,7 @@ import vllm_mindspore
 from vllm import LLM, SamplingParams
 
 
-@pytest.mark.level0
+@pytest.mark.level1
 @pytest.mark.platform_arm_ascend910b_training
 @pytest.mark.env_single
 def test_deepseek_r1():

@@ -77,7 +77,8 @@ def test_deepseek_r1_gptq_a16w4():
         "/home/workspace/mindspore_dataset/weight/DeepSeekR1_gptq-pergroup_safetensors",
         trust_remote_code=True,
         gpu_memory_utilization=0.9,
-        tensor_parallel_size=4)
+        tensor_parallel_size=4,
+        max_model_len=4096)
     # Generate texts from the prompts. The output is a list of RequestOutput objects
     # that contain the prompt, generated text, and other information.
     outputs = llm.generate(prompts, sampling_params)

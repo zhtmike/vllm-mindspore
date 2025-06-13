@@ -20,7 +20,7 @@ for offline inference.
 """
 import pytest
 import os
-from . import set_env
+from tests.st.python import set_env
 
 env_manager = set_env.EnvVarManager()
 # def env
@@ -28,7 +28,6 @@ env_vars = {
     "ASCEND_CUSTOM_PATH": os.path.expandvars("$ASCEND_HOME_PATH/../"),
     "MS_ENABLE_LCCL": "off",
     "HCCL_OP_EXPANSION_MODE": "AIV",
-    "ASCEND_RT_VISIBLE_DEVICES": "0,1",
     "MS_ALLOC_CONF": "enable_vmm:True",
     "LCCL_DETERMINISTIC": "1",
     "HCCL_DETERMINISTIC": "true",
@@ -60,7 +59,7 @@ def create_test_prompts(
 
 def process_requests(engine: LLMEngine,
                      test_prompts: List[Tuple[str, SamplingParams,
-                                              Optional[LoRARequest]]]):
+                     Optional[LoRARequest]]]):
     """Continuously process a list of prompts and handle the outputs."""
     request_id = 0
 
@@ -101,9 +100,6 @@ def initialize_engine() -> LLMEngine:
     return LLMEngine.from_engine_args(engine_args)
 
 
-@pytest.mark.level0
-@pytest.mark.platform_arm_ascend910b_training
-@pytest.mark.env_single
 def test_multilora_inference():
     """test function that sets up and runs the prompt processing."""
     engine = initialize_engine()

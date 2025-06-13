@@ -28,13 +28,15 @@ from vllm.model_executor.layers.sampler import SamplerOutput
 from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.sequence import IntermediateTensors
 from vllm.distributed import get_tensor_model_parallel_world_size
+from vllm.distributed.parallel_state import get_dp_group
 from vllm.logger import init_logger
 from vllm.forward_context import get_forward_context
 import vllm.envs as envs
 
 import mindspore as ms
-from mindspore import Tensor
+from mindspore import Tensor, mint
 from mindspore.common.api import _pynative_executor
+from mindspore.communication import get_rank
 
 from mindformers.tools.register.config import MindFormerConfig
 from mindformers.core.context import build_mf_context
@@ -54,6 +56,8 @@ class MfModelBase(MsModelBase):
         )
 
         self.mf_config = MindFormerConfig(os.getenv("MINDFORMERS_MODEL_CONFIG"))
+        self.rank_id = get_rank()
+        self.dp_size = get_dp_group()
         build_mf_context(self.mf_config)
         build_parallel_config(self.mf_config)
         self.mf_config.model.model_config.parallel_config = (
@@ -172,11 +176,21 @@ class MfModelBase(MsModelBase):
             attn_metadata = self._dummy_attention_metadata(input_ids, positions)
         model_inputs, is_prefill = self.prepare_inputs(input_ids, positions, attn_metadata)
         model_inputs = self.update_model_inputs(model_inputs, **kwargs)
+        
+        # enable_mb_split is True in lager EP enable micro-batch and per-dp-bs > 1
+        enable_mb_split = self.is_enable_micro_batch_split(is_prefill, model_inputs["q_seq_lens"])
 
         if is_prefill:
-            self.network.phase = "prefill"
-            if not self.set_flags or is_pynative():
-                self.network.add_flags_custom(is_first_iteration=True)
+            if self.enable_micro_batch:
+                self.network.phase = "prefill" if not enable_mb_split else "prefill_micro_batch"
+                if not self.set_flags or is_pynative() or enable_mb_split:
+                    self.network.add_flags_custom(is_first_iteration=is_first_iteration)
+                    self.network.add_flags_enable_micro_batch(enable_micro_batch=enable_mb_split)
+            else:
+                self.network.phase = "prefill"
+                if not self.set_flags or is_pynative():
+                    self.network.add_flags_custom(is_first_iteration=True)
+
             hidden_states = self.network(**model_inputs)
             self.network.phase = "increment"
             if not self.set_flags or is_pynative():
@@ -217,3 +231,12 @@ class MfModelBase(MsModelBase):
 
     def load_weights(self, weights: Iterable[Tuple[str, Tensor]]) -> Set[str]:
         raise NotImplementedError("load_weight not implemented.")
+    
+    def is_enable_micro_batch_split(self, is_prefill, q_seq_lens):
+        """Judge enable micro batch """
+        if self.enable_micro_batch:
+            is_prefill_cur_dp = mint.ones((1), dtype=ms.int8) if is_prefill else mint.zeros((1), dtype=ms.int8)
+            is_prefill_all_dp = get_dp_group().all_gather(is_prefill_cur_dp)
+            return is_prefill_all_dp.sum() == self.dp_size and q_seq_lens.shape[0] > 1
+        else:
+            return False

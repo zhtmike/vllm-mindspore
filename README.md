@@ -13,7 +13,7 @@ vLLM MindSpore
 ---
 *最新消息* 🔥
 
-- [Coming Soon🏃] 适配vLLM [v0.8.3](https://github.com/vllm-project/vllm/releases/tag/v0.8.3)，新增支持vLLM V1架构、Qwen3大模型。
+- [2025/06] 适配vLLM [v0.8.3](https://github.com/vllm-project/vllm/releases/tag/v0.8.3)，新增支持vLLM V1架构、Qwen3大模型。
 - [2025/04] 完成vLLM [v0.7.3](https://github.com/vllm-project/vllm/releases/tag/v0.7.3)适配，新增支持Automatic Prefix Caching、Chunked Prefill、Multi-step Scheduling、MTP等特性。联合openEuler社区和上海交通大学，实现DeepSeek全栈开源单机推理部署，你可以在[这里](https://www.openeuler.org/zh/news/openEuler/20240421-jd/20240421-jd.html)阅读详细报道。
 - [2025/03] 完成vLLM [v0.6.6.post1](https://github.com/vllm-project/vllm/releases/tag/v0.6.6.post1)适配，支持采用`vllm.entrypoints`部署基于MindSpore的DeepSeek-V3/R1、Qwen2.5等大模型推理服务。联合openEuler社区和北京大学，发布全栈开源DeepSeek推理方案，你可以在[这里](https://news.pku.edu.cn/xwzh/e13046c47d03471c8cebb950bd1f4598.htm)阅读详细报道。
 - [2025/02] MindSpore社区正式创建了[mindspore/vllm-mindspore](https://gitee.com/mindspore/vllm-mindspore)代码，旨在将MindSpore大模型推理能力接入vLLM。
@@ -22,15 +22,15 @@ vLLM MindSpore
 
 # 简介
 
-vLLM Mindspore插件（`vllm-mindspore`）是一个由[MindSpore社区](https://www.mindspore.cn/)孵化的vLLM后端插件。其旨在将基于Mindspore构建的大模型推理能力接入[vLLM](https://github.com/vllm-project/vllm)，从而有机整合Mindspore和vLLM的技术长板，提供全栈开源、高性能、易用的大模型推理解决方案。
+vLLM Mindspore插件（`vllm-mindspore`）是一个由[MindSpore社区](https://www.mindspore.cn/)孵化的vLLM后端插件。其将基于MindSpore构建的大模型推理能力接入[vLLM](https://github.com/vllm-project/vllm)，从而有机整合MindSpore和vLLM的技术优势，提供全栈开源、高性能、易用的大模型推理解决方案。
 
-vLLM MindSpore插件以将Mindspore大模型接入vLLM，并实现服务化部署为功能目标。其遵循以下设计原则：
+vLLM MindSpore插件以将MindSpore大模型接入vLLM，并实现服务化部署为功能目标。其遵循以下设计原则：
 
 - 接口兼容：支持vLLM原生的API和服务部署接口，避免新增配置文件或接口，降低用户学习成本和确保易用性。
 - 最小化侵入式修改：尽可能避免侵入式修改vLLM代码，以保障系统的可维护性和可演进性。
 - 组件解耦：最小化和规范化MindSpore大模型组件和vLLM服务组件的耦合面，以利于多种MindSpore大模型套件接入。
 
-基于上述设计原则，vLLM MindSpore采用如下图所示的系统架构，分组件类别实现vLLM与Mindspore的对接：
+基于上述设计原则，vLLM MindSpore采用如下图所示的系统架构，分组件类别实现vLLM与MindSpore的对接：
 
 - 服务化组件：通过将LLM Engine、Scheduler等服务化组件中的PyTorch API调用映射至MindSpore能力调用，继承支持包括Continuous Batching、PagedAttention在内的服务化功能。
 - 大模型组件：通过注册或替换模型、网络层、自定义算子等组件，将MindSpore Transformers、MindSpore One等MindSpore大模型套件和自定义大模型接入vLLM。
@@ -39,7 +39,7 @@ vLLM MindSpore插件以将Mindspore大模型接入vLLM，并实现服务化部�
   <img src="docs/arch.cn.png" alt="Description" width="800" />
 </div>
 
-vLLM MindSpore采用vLLM社区推荐的插件机制，实现能力注册。未来期望遵循[[RPC] Multi-framework support for vllm](https://gitee.com/mindspore/vllm-mindspore/issues/IBTNRG)所述原则。
+vLLM MindSpore采用vLLM社区推荐的插件机制，实现能力注册。未来期望遵循[RPC Multi-framework support for vllm](https://gitee.com/mindspore/vllm-mindspore/issues/IBTNRG)所述原则。
 
 # 环境准备
 
@@ -48,8 +48,10 @@ vLLM MindSpore采用vLLM社区推荐的插件机制，实现能力注册。未�
 - 软件：
   - Python >= 3.9, < 3.12
   - CANN >= 8.0.0.beta1
-  - MindSpore (与vllm-mindspore版本配套)
-  - vLLM (与vllm-mindspore版本配套)
+  - MindSpore
+  - vLLM
+
+注：请参考[版本配套](https://gitee.com/mindspore/docs/blob/master/docs/vllm_mindspore/docs/source_zh_cn/getting_started/installation/installation.md)，以获取详细的软件版本配套信息。
 
 # 快速体验
 

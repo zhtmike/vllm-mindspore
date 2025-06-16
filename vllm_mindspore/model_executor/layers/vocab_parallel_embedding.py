@@ -19,16 +19,15 @@ from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
 from mindspore import Parameter, Tensor, mint, nn, ops
-from mindspore.common import dtype as mstype
 from mindspore.common.dtype import typing
+from vllm.config import get_current_vllm_config
 from vllm.distributed import (divide, get_tensor_model_parallel_rank,
                               get_tensor_model_parallel_world_size)
-from vllm.model_executor.layers.quantization.base_config import \
-    QuantizationConfig
-from vllm.config import get_current_vllm_config
+from vllm.model_executor.layers.quantization.base_config import (
+    QuantizationConfig)
 
-from vllm_mindspore.distributed.communication_op import \
-    ReduceFromModelParallelRegion
+from vllm_mindspore.distributed.communication_op import (
+    ReduceFromModelParallelRegion)
 from vllm_mindspore.model_executor.layers.quantization.base_config import (
     QuantizeMethodBase, method_has_implemented_embedding)
 from vllm_mindspore.model_executor.utils import set_weight_attrs
@@ -408,7 +407,6 @@ class ParallelLMHead(VocabParallelEmbedding):
                 },
             )
         else:
-            # self.register_parameter("bias", None)
             self.bias = None
 
     def tie_weights(self, embed_tokens: VocabParallelEmbedding):
@@ -417,8 +415,7 @@ class ParallelLMHead(VocabParallelEmbedding):
         if self.quant_config and self.quant_config.get_name() == "gguf":
             return embed_tokens
         else:
-            # self.weight = embed_tokens.weight
-            self.weight.set_data(embed_tokens.weight)
+            self.weight = embed_tokens.weight
             return self
 
     def forward(self, input_):

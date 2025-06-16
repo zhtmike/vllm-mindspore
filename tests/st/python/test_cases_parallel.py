@@ -232,7 +232,17 @@ def test_cases_parallel_part5():
          "export HCCL_IF_BASE_PORT=61002 && "
          "pytest -s -v cases_parallel/vllm_mf_qwen3_8b_v1.py::test_mf_qwen3 "
          "> vllm_mf_qwen3_8b_v1_test_mf_qwen3.log",
-         "vllm_mf_qwen3_8b_v1_test_mf_qwen3.log")
+         "vllm_mf_qwen3_8b_v1_test_mf_qwen3.log"),
+        ("export ASCEND_RT_VISIBLE_DEVICES=4 && export LCAL_COMM_ID=127.0.0.1:10070 && "
+         "export HCCL_IF_BASE_PORT=61004 && "
+         "pytest -s -v cases_parallel/vllm_llama3.py::test_vllm_llama3_8b "
+         "> vllm_llama3_8b_test_vllm_llama3.log",
+         "vllm_llama3_8b_test_vllm_llama3.log"),
+        ("export ASCEND_RT_VISIBLE_DEVICES=5 && export LCAL_COMM_ID=127.0.0.1:10071 && "
+         "export HCCL_IF_BASE_PORT=61006 && "
+         "pytest -s -v cases_parallel/vllm_llama3.py::test_vllm_llama3_1b "
+         "> vllm_llama3_1b_test_vllm_llama3.log",
+         "vllm_llama3_1b_test_vllm_llama3.log"),
     ]
 
     with Pool(len(commands)) as pool:

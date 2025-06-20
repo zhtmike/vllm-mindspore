@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# type: ignore
 # isort:skip_file
 # Copyright 2025 Huawei Technologies Co., Ltd
 # Copyright 2024 The vLLM team.
@@ -265,13 +266,19 @@ vllm.model_executor.layers.rejection_sampler._multinomial = _multinomial
 ######### for multi-model
 from vllm_mindspore.inputs.registry import call_hf_processor
 from vllm.inputs.registry import InputProcessingContext
+
 InputProcessingContext.call_hf_processor = call_hf_processor
 
-from vllm_mindspore.multimodal.inputs import as_kwargs
+from vllm_mindspore.multimodal.inputs import as_kwargs, from_items, MultiModalFieldElem
 from vllm.multimodal.inputs import MultiModalKwargs
-MultiModalKwargs.as_kwargs = as_kwargs
 
-from vllm_mindspore.model_executor.layers.rotary_embedding import InferMRotaryEmbedding
+MultiModalKwargs.as_kwargs = as_kwargs
+MultiModalKwargs.from_items = from_items
+
+vllm.multimodal.inputs.MultiModalFieldElem = MultiModalFieldElem
+
+from vllm_mindspore.model_executor.layers.rotary_embedding import InferMRotaryEmbedding  # type: ignore[attr-defined]
+
 vllm.model_executor.layers.rotary_embedding.MRotaryEmbedding = InferMRotaryEmbedding
 
 # patch for V1
@@ -284,6 +291,7 @@ from vllm_mindspore.v1.spec_decode import eagle
 update_modules("vllm.v1.spec_decode.eagle", eagle)
 
 from vllm_mindspore.v1.attention.backends import ms_attn
+
 update_modules("vllm.v1.attention.backends.flash_attn", ms_attn)
 
 import vllm.v1.worker.gpu_model_runner
@@ -292,11 +300,16 @@ from vllm_mindspore.v1.worker.gpu_model_runner import _prepare_inputs
 
 vllm.v1.worker.gpu_model_runner.GPUModelRunner._prepare_inputs = _prepare_inputs
 
+from vllm_mindspore.v1.worker.gpu_model_runner import _calc_mrope_positions
+
+vllm.v1.worker.gpu_model_runner.GPUModelRunner._calc_mrope_positions = _calc_mrope_positions
+
 from vllm_mindspore.v1.worker.gpu_model_runner import _update_states
 
 vllm.v1.worker.gpu_model_runner.GPUModelRunner._update_states = _update_states
 
 from vllm_mindspore.v1.worker.gpu_model_runner import initialize_kv_cache, get_kv_cache_spec
+
 vllm.v1.worker.gpu_model_runner.GPUModelRunner.initialize_kv_cache = initialize_kv_cache
 vllm.v1.worker.gpu_model_runner.GPUModelRunner.get_kv_cache_spec = get_kv_cache_spec
 
@@ -369,6 +382,7 @@ Worker.compile_or_warm_up_model = compile_or_warm_up_model
 
 from vllm_mindspore.v1.core.sched.scheduler import update_from_output
 from vllm.v1.core.sched.scheduler import Scheduler
+
 Scheduler.update_from_output = update_from_output
 
 from .utils import check_ready

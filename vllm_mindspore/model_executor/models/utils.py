@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# type: ignore
+# isort:skip_file
 # Copyright 2025 Huawei Technologies Co., Ltd
 # Copyright 2024 The vLLM team.
 #
@@ -22,7 +24,7 @@ import mindspore as ms
 from mindspore import mint, ops
 from vllm.sequence import IntermediateTensors
 
-from vllm_mindspore.multimodal.inputs import NestedTensors
+from vllm_mindspore.multimodal.inputs import NestedTensors  # type: ignore[attr-defined]
 from vllm_mindspore.utils import get_valid_dtype
 
 WeightsMapping = Mapping[str, Optional[str]]
@@ -247,8 +249,7 @@ def merge_multimodal_embeddings(
         This updates ``inputs_embeds`` in place.
     """
     if isinstance(placeholder_token_id, list):
-        placeholder_token_id = ms.Tensor(placeholder_token_id,
-                                         device=input_ids.device)
+        placeholder_token_id = ms.Tensor(placeholder_token_id)
         return _merge_multimodal_embeddings(
             inputs_embeds,
             ms.numpy.isin(input_ids, placeholder_token_id),

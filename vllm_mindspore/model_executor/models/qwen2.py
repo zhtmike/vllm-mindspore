@@ -16,7 +16,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-import numpy as np
 from typing import (TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Tuple,
                     Union)
 
@@ -25,19 +24,14 @@ if TYPE_CHECKING:
 else:
     Qwen2Config = None
 
-import mindspore as ms
 from mindspore import Parameter, Tensor, mint, nn
-from mindspore.common import dtype as mstype
 
-import vllm.envs as envs
 from vllm.attention.backends.abstract import AttentionType
 from vllm.config import CacheConfig, VllmConfig
 from vllm.distributed import get_pp_group, get_tensor_model_parallel_world_size
-from vllm.forward_context import get_forward_context
 from vllm.model_executor.layers.quantization import QuantizationConfig
 from vllm.model_executor.models.interfaces import SupportsLoRA
 from vllm.sequence import IntermediateTensors
-from vllm.model_executor.sampling_metadata import SamplingMetadata
 
 from vllm_mindspore.attention import Attention
 from vllm_mindspore.model_executor.layers.activation import SwiGLU
@@ -53,15 +47,11 @@ from vllm_mindspore.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead, VocabParallelEmbedding)
 from vllm_mindspore.model_executor.model_loader.weight_utils import \
     default_weight_loader
-from vllm_mindspore.model_executor.models.attention_mask import \
-    LowerTriangularMask
-from vllm_mindspore.model_executor.models.model_base import (AttentionWrapper,
-                                                             NativeModel)
+from vllm_mindspore.model_executor.models.model_base import NativeModel
 from vllm_mindspore.model_executor.models.utils import (
     PPMissingLayer, make_empty_intermediate_tensors_factory, make_layers,
     maybe_prefix)
 from vllm.model_executor.sampling_metadata import SamplingMetadata
-from vllm_mindspore.utils import STR_DTYPE_TO_MS_DTYPE
 
 
 class Qwen2MLP(nn.Cell):
@@ -469,14 +459,12 @@ class Qwen2ForCausalLM(NativeModel, SupportsLoRA):
 
         self.common_preprocess(vllm_config, prefix)
 
-    def forward(
-        self,
-        input_ids: Tensor,
-        positions: Tensor,
-        intermediate_tensors: IntermediateTensors = None,
-        inputs_embeds: Tensor = None,
-        **kwargs
-    ) -> Union[Tensor, IntermediateTensors]:
+    def forward(self,
+                input_ids: Tensor,
+                positions: Tensor,
+                intermediate_tensors: IntermediateTensors = None,
+                inputs_embeds: Tensor = None,
+                **kwargs) -> Union[Tensor, IntermediateTensors]:
         hidden_states = self.exec_model(input_ids, positions,
                                         intermediate_tensors, inputs_embeds)
         return hidden_states

@@ -66,18 +66,22 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
         self.expert_num = self.config.moe_config.expert_num
         self.moe_split_tp = self.moe_tp_size > 1
         self.moe_split_ep = self.moe_ep_size > 1
-        logger.debug("Deepseekv3 weight split info:")
-        logger.debug("global_rank_id: %s", self.global_rank_id)
-        logger.debug("tp_group_size: %s", self.tp_group_size)
-        logger.debug("dp_group_size: %s", self.dp_group_size)
-        logger.debug("tp_rank_id: %s", self.tp_rank_id)
-        logger.debug("ep_method: %s", self.ep_method.name)
-        logger.debug("num_router_experts: %s", self.num_router_experts)
-        logger.debug("ep_group_nums: %s", self.ep_group_nums)
-        logger.debug("moe_ep_rank_id: %s", self.moe_ep_rank_id)
-        logger.debug("moe_tp_rank_id: %s", self.moe_tp_rank_id)
-        logger.debug("moe_ep_size: %s", self.moe_ep_size)
-        logger.debug("moe_tp_size: %s", self.moe_tp_size)
+        logger.debug(
+            "Deepseekv3 weight split info:"
+            "global_rank_id: %s \n"
+            "tp_group_size: %s \n"
+            "dp_group_size: %s \n"
+            "tp_rank_id: %s \n"
+            "ep_method: %s \n"
+            "num_router_experts: %s \n"
+            "ep_group_nums: %s \n"
+            "moe_ep_rank_id: %s \n"
+            "moe_tp_rank_id: %s \n"
+            "moe_ep_size: %s \n"
+            "moe_tp_size: %s", self.global_rank_id, self.tp_group_size,
+            self.dp_group_size, self.tp_rank_id, self.ep_method.name,
+            self.num_router_experts, self.ep_group_nums, self.moe_ep_rank_id,
+            self.moe_tp_rank_id, self.moe_ep_size, self.moe_tp_size)
 
     def quant_convert_weight_name(self, weight_name: str):
         """replace quant net weight name"""
@@ -973,20 +977,30 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
             qkv2l_quant_zp_name = f"model.layers.{layer_id}.attention.qkv2l.quant_op.input_zp"
             qkv2l_quant_scale_name = f"model.layers.{layer_id}.attention.qkv2l.quant_op.input_scale"
             qkv2l_rmsnorm_beta_name = f"model.layers.{layer_id}.attention.qkv2l.quant_op.beta"
+            if hasattr(self.config.model.model_config, "use_mla_pre"
+                       ) and self.config.model.model_config.use_mla_pre:
+                qkv2l_weight = np.concatenate((kv2l_ms_param, q2l_ms_param), 0)
+                qkv2l_bias = np.concatenate(
+                    (kv2l_quant_bias_ms_param, q2l_quant_bias_ms_param), 0)
+                qkv2l_scale = np.concatenate(
+                    (kv2l_dequant_scale_ms_param, q2l_dequant_scale_ms_param),
+                    0)
+            else:
+                qkv2l_weight = np.concatenate((q2l_ms_param, kv2l_ms_param), 0)
+                qkv2l_bias = np.concatenate(
+                    (q2l_quant_bias_ms_param, kv2l_quant_bias_ms_param), 0)
+                qkv2l_scale = np.concatenate(
+                    (q2l_dequant_scale_ms_param, kv2l_dequant_scale_ms_param),
+                    0)
 
-            qkv2l_weight = np.concatenate((q2l_ms_param, kv2l_ms_param), 0)
             parameter_dict[qkv2l_weight_name] = ms.Parameter(
                 ms.Tensor(qkv2l_weight, ms.int8),
                 name=qkv2l_weight_name,
                 requires_grad=False)
-            qkv2l_bias = np.concatenate(
-                (q2l_quant_bias_ms_param, kv2l_quant_bias_ms_param), 0)
             parameter_dict[qkv2l_bias_name] = ms.Parameter(
                 ms.Tensor(qkv2l_bias, ms.int32),
                 name=qkv2l_bias_name,
                 requires_grad=False)
-            qkv2l_scale = np.concatenate(
-                (q2l_dequant_scale_ms_param, kv2l_dequant_scale_ms_param), 0)
             parameter_dict[qkv2l_scale_name] = ms.Parameter(
                 ms.Tensor(qkv2l_scale, ms.float32),
                 name=qkv2l_scale_name,
@@ -1975,7 +1989,7 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
                                                        num_layers,
                                                        hf_weight_map):
         '''infer_smooth_quant_net_ms_convert_layer_weight'''
-        parameter_dict = {}  # type: ignore[var-annotated]
+        parameter_dict: dict[str, ms.Parameter] = {}
 
         no_need_split_layer = [
             "tok_embeddings", "norm", "routed_experts.router.dense",
@@ -2175,7 +2189,7 @@ class DeepseekV3WeightProcessor(BaseWeightProcessor):
 
         param_not_load, ckpt_not_load = ms.load_param_into_net(
             self.network, self.parameter_dict)
-        logger.info("param_not_load: %s, ckpt_not_load: %s",
-                    str(param_not_load), str(ckpt_not_load))
+        logger.info("param_not_load: %s, ckpt_not_load: %s", param_not_load,
+                    ckpt_not_load)
         del self.parameter_dict
         gc.collect()

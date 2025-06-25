@@ -26,7 +26,9 @@ from vllm_mindspore.utils import (is_mindformers_model_backend,
                                   is_mindone_model_backend)
 
 _NATIVE_MODELS = {
+    "Blip2ForConditionalGeneration": ("blip2", "Blip2ForConditionalGeneration"),
     "LlamaForCausalLM": ("llama", "LlamaForCausalLM"),
+    "OPTForCausalLM": ("opt", "OPTForCausalLM"),
     "Qwen2ForCausalLM": ("qwen2", "Qwen2ForCausalLM"),
     "Qwen2_5_VLForConditionalGeneration":
     ("qwen2_5_vl", "Qwen2_5_VLForConditionalGeneration"),

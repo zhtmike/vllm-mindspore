@@ -100,5 +100,8 @@ cd "$msadapter_dir" || { echo "Failed to git clone msadapter!"; exit 1; }
 pip uninstall msadapter -y && pip install .  || { echo "Failed to install msadapter"; exit 1; }
 cd ..
 
+# MindONE transformer dependency
+pip install omegaconf
+
 echo "========= All dependencies installed successfully!"
 echo -e "[\033[0;34mnotice\033[0m]Please set the command: export PYTHONPATH=$(pwd)/$mf_dir/:\$PYTHONPATH"

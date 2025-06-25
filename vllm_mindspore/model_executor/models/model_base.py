@@ -31,7 +31,7 @@ from vllm.sequence import IntermediateTensors
 import vllm.envs as envs
 
 import mindspore as ms
-from mindspore import Tensor, nn, mutable
+from mindspore import Parameter, Tensor, nn, mutable
 from mindspore.common import dtype as mstype
 
 from vllm_mindspore.model_executor.models.attention_mask import LowerTriangularMask
@@ -129,8 +129,15 @@ class MsModelBase:
     def named_parameters(self):
         self._check_modules_valid()
 
-        for cell_name, module in self.modules_dict.items(
-        ):  # type: ignore[attr-defined]
+        for cell_name, module in self.modules_dict.items():
+            if isinstance(module, Parameter):
+                yield cell_name, module
+                continue
+            elif isinstance(module, MsModelBase):
+                for par_name, par in module.named_parameters():
+                    yield par_name, par
+                continue
+
             for par_name, par in module.parameters_and_names():
                 if cell_name != "self":
                     par_name = cell_name + "." + par_name
@@ -141,8 +148,15 @@ class MsModelBase:
         self._check_modules_valid()
 
         params_dict = dict()
-        for name, module in self.modules_dict.items(
-        ):  # type: ignore[attr-defined]
+        for name, module in self.modules_dict.items():
+            if isinstance(module, Parameter):
+                params_dict[name] = module
+                continue
+            elif isinstance(module, MsModelBase):
+                module_params = module.get_params_dict()
+                params_dict.update(module_params)
+                continue
+
             module_params = module.parameters_dict()
             if name != "self":
                 new_module_params = dict()
@@ -156,8 +170,14 @@ class MsModelBase:
     def named_modules(self, remove_duplicate: bool = True):
         self._check_modules_valid()
 
-        for name, module in self.modules_dict.items(
-        ):  # type: ignore[attr-defined]
+        for name, module in self.modules_dict.items():
+            if isinstance(module, Parameter):
+                continue
+            elif isinstance(module, MsModelBase):
+                for module_name, sub_module in module.named_modules():
+                    yield module_name, sub_module
+                continue
+
             for module_name, sub_module in module.cells_and_names():
                 if name != "self":
                     module_name = name + "." + module_name
@@ -179,8 +199,13 @@ class MsModelBase:
     def eval(self):
         self._check_modules_valid()
 
-        for _, module in self.modules_dict.items(
-        ):  # type: ignore[attr-defined]
+        for _, module in self.modules_dict.items():
+            if isinstance(module, Parameter):
+                continue
+            elif isinstance(module, MsModelBase):
+                module.eval()
+                continue
+
             module.set_train(False)
 
         return self

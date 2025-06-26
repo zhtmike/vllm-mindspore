@@ -64,10 +64,10 @@ pip uninstall mindspore -y && pip install "$mindspore_name" || { echo "Failed to
 
 
 echo "========= Installing mindformers"
-mf_dir=br_infer_deepseek_os
+mf_dir=mindformers-os
 if [ ! -d "$mf_dir" ]; then
     git clone https://gitee.com/mindspore/mindformers.git -b br_infer_deepseek_os "$mf_dir"
-    git checkout 1e6aad8700aff37c0f9e7ddc0bfd62bf7123ad51
+    git checkout 849e943230b7f30317654327109df1dd7acd4b4c
 else
     echo "The $mf_dir folder already exists and will not be re-downloaded."
 fi

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# isort:skip_file
 # encoding: utf-8
 # Copyright 2025 Huawei Technologies Co., Ltd
 #
@@ -53,8 +54,12 @@ def test_deepseek_r1_bf16():
     sampling_params = SamplingParams(temperature=0.0, max_tokens=10, top_k=1)
 
     # Create an LLM.
-    llm = LLM(model="/home/workspace/mindspore_dataset/weight/DeepSeek-R1-bf16",
-              trust_remote_code=True, gpu_memory_utilization=0.9, tensor_parallel_size=2, max_model_len=4096)
+    llm = LLM(
+        model="/home/workspace/mindspore_dataset/weight/DeepSeek-R1-bf16",
+        trust_remote_code=True,
+        gpu_memory_utilization=0.9,
+        tensor_parallel_size=2,
+        max_model_len=33 * 1024)
     # Generate texts from the prompts. The output is a list of RequestOutput objects
     # that contain the prompt, generated text, and other information.
     outputs = llm.generate(prompts, sampling_params)

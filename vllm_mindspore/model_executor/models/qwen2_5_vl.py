@@ -336,20 +336,16 @@ class Qwen2_5_VisionPatchEmbed(nn.Cell):
         self.patch_size = patch_size
         self.temporal_patch_size = temporal_patch_size
         self.hidden_size = hidden_size
+        self.dtype = ms.bfloat16
 
-        kernel_size = (temporal_patch_size, patch_size, patch_size)
-        self.proj = mint.nn.Conv3d(in_channels,
-                                   hidden_size,
-                                   kernel_size=kernel_size,
-                                   stride=kernel_size,
-                                   bias=False,
-                                   dtype=ms.bfloat16)
+        self.proj = nn.Dense(temporal_patch_size * patch_size * patch_size *
+                             in_channels,
+                             self.hidden_size,
+                             has_bias=False,
+                             dtype=self.dtype)
 
     def construct(self, x: ms.Tensor) -> ms.Tensor:
-        L, C = x.shape
-        x = x.view(L, -1, self.temporal_patch_size, self.patch_size,
-                   self.patch_size)
-        x = self.proj(x).view(L, self.hidden_size)
+        x = self.proj(x)  # B Ph*Pw C_out
         return x
 
 
@@ -500,7 +496,7 @@ class Qwen2_5_VisionTransformer(nn.Cell):
 
     @property
     def dtype(self) -> ms.Type:
-        return self.patch_embed.proj.weight.dtype
+        return self.patch_embed.dtype
 
     def construct(
         self,
@@ -573,6 +569,9 @@ class Qwen2_5_VisionTransformer(nn.Cell):
                 weight_loader(param, loaded_weight, shard_id)
                 break
             else:
+                if name == "visual.patch_embed.proj.weight":
+                    loaded_weight = loaded_weight.reshape(
+                        loaded_weight.shape[0], -1)
                 param = params_dict[name]
                 weight_loader = getattr(param, "weight_loader",
                                         default_weight_loader)

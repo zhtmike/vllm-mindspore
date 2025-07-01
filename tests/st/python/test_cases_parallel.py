@@ -250,6 +250,27 @@ def test_cases_parallel_part5():
     check_results(commands, results)
 
 
+@pytest.mark.level0
+@pytest.mark.platform_arm_ascend910b_training
+@pytest.mark.env_single
+def test_cases_parallel_part6():
+    """
+    Feature: test cases parallel.
+    Description: test cases parallel.
+    Expectation: Pass.
+    """
+    commands = [
+        ("export ASCEND_RT_VISIBLE_DEVICES=0,1 && export LCAL_COMM_ID=127.0.0.1:10068 && "
+         "export HCCL_IF_BASE_PORT=61000 && "
+         "pytest -s -v cases_parallel/vllm_qwen2_5_vl_7b_v1.py::test_qwen2_5_vl_7b_v1 "
+         "> vllm_qwen2_5_vl_7b_v1.log", "vllm_qwen2_5_vl_7b_v1.log"),
+    ]
+
+    with Pool(len(commands)) as pool:
+        results = list(pool.imap(run_command, commands))
+    check_results(commands, results)
+
+
 @pytest.mark.level1
 @pytest.mark.platform_arm_ascend910b_training
 @pytest.mark.env_single

@@ -269,11 +269,11 @@ from vllm.inputs.registry import InputProcessingContext
 
 InputProcessingContext.call_hf_processor = call_hf_processor
 
-from vllm_mindspore.multimodal.inputs import as_kwargs, from_items, MultiModalFieldElem
+from vllm_mindspore.multimodal.inputs import as_kwargs, _try_stack, MultiModalFieldElem
 from vllm.multimodal.inputs import MultiModalKwargs
 
 MultiModalKwargs.as_kwargs = as_kwargs
-MultiModalKwargs.from_items = from_items
+MultiModalKwargs._try_stack = _try_stack
 
 vllm.multimodal.inputs.MultiModalFieldElem = MultiModalFieldElem
 

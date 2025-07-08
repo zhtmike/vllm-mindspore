@@ -315,10 +315,10 @@ def _update_states(
             second_per_grid_ts = []
             for mm_input in self.requests[req_id].mm_inputs:
                 if mm_input.get("image_grid_thw") is not None:
-                    image_grid_thw.extend(mm_input["image_grid_thw"].tolist())
+                    image_grid_thw.extend(mm_input["image_grid_thw"])
                     if mm_input.get("video_grid_thw") is not None:
                         video_grid_thw.extend(
-                            mm_input["video_grid_thw"].tolist())
+                            mm_input["video_grid_thw"])
                 if mm_input.get("second_per_grid_ts") is not None:
                     second_per_grid_ts.extend(mm_input["second_per_grid_ts"])
 

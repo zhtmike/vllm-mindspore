@@ -19,10 +19,12 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Union, cast
+import numpy as np
 import mindspore
 from vllm.multimodal.inputs import BaseMultiModalField, BatchedTensorInputs, JSONTree, json_map_leaves,\
     nested_tensors_equal
 from vllm.multimodal import MultiModalKwargs
+from vllm.utils import is_list_of
 
 NestedTensors = Union[list["NestedTensors"], list[mindspore.Tensor],
                       mindspore.Tensor, tuple[mindspore.Tensor, ...]]
@@ -74,27 +76,45 @@ def as_kwargs(
     device=None,
 ) -> BatchedTensorInputs:
     # replace as_kwargs of vLLM for multi-model
-    json_inputs = cast(JSONTree[mindspore.Tensor], batched_inputs)
+    json_inputs = cast(JSONTree[np.ndarray], batched_inputs)
 
     json_mapped = json_map_leaves(
-        lambda x: x,
+        lambda x: mindspore.Tensor(x),
         json_inputs,
     )
 
     return cast(BatchedTensorInputs, json_mapped)
 
 
-def from_items(items):
-    """Construct a new :class:`MultiModalKwargs` from multiple items."""
-    elems_by_key = defaultdict[str, list[MultiModalFieldElem]](list)
-    for item in items:
-        for key, elem in item.items():
-            # transform elem.data to tensor, gpu is tensor.
-            elem.data = mindspore.Tensor(elem.data)
-            elems_by_key[key].append(elem)
-    data = {
-        key: elems[0].field.reduce_data(elems)
-        for key, elems in elems_by_key.items() if len(elems) > 0
-    }
+@staticmethod
+def _try_stack(nested_tensors: NestedTensors) -> NestedTensors:
+    """
+    Stack the inner dimensions that have the same shape in
+    a nested list of tensors.
 
-    return MultiModalKwargs(data, items=items)
+    Thus, a dimension represented by a list means that the inner
+    dimensions are different for each element along that dimension.
+    """
+    if isinstance(nested_tensors, np.ndarray):
+        return nested_tensors
+
+    if isinstance(nested_tensors, (int, float)):
+        return np.array(nested_tensors)
+
+    stacked = [MultiModalKwargs._try_stack(t) for t in nested_tensors]
+    if not is_list_of(stacked, np.ndarray, check="all"):
+        # Only tensors (not lists) can be stacked.
+        return stacked
+
+    tensors_ = cast(list[np.ndarray], stacked)
+    if len(tensors_) == 1:
+        # An optimization when `tensors_` contains only one tensor:
+        # - produce exactly same result as `torch.stack(tensors_)`
+        # - will achieve zero-copy if the tensor is contiguous
+        return tensors_[0][None]
+
+    if any(t.shape != tensors_[0].shape for t in tensors_):
+        # The tensors have incompatible shapes and can't be stacked.
+        return tensors_
+
+    return np.stack(tensors_)

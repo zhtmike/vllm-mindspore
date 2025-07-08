@@ -32,6 +32,7 @@ from functools import partial
 from typing import Callable, Iterable, Mapping, Optional, Set, Tuple, Union, Dict, Any
 
 import math
+import numpy as np
 import mindspore as ms
 import mindspore.nn as nn
 import mindspore.mint as mint
@@ -103,7 +104,7 @@ class _Qwen2VLMultiModalProcessor(Qwen2VLMultiModalProcessor):
 
         def get_replacement_qwen2vl(item_idx: int, modality: str):
             grid_thw = out_mm_kwargs[f"{modality}_grid_thw"][item_idx]
-            assert isinstance(grid_thw, ms.Tensor)
+            assert isinstance(grid_thw, np.ndarray)
 
             num_tokens = int(grid_thw.prod()) // merge_length
             return [placeholder[modality]] * num_tokens
